@@ -1,21 +1,21 @@
 package filter
 
 import (
-    "encoding/json"
-    "regexp"
-    "strings"
+	"encoding/json"
+	"regexp"
+	"strings"
 
-    "github.com/Knetic/govaluate"
+	"github.com/Knetic/govaluate"
 
-    "logsense/internal/model"
+	"logsense/internal/model"
 )
 
 type Criteria struct {
-    Query    string // plain contains or regex if /.../
-    UseRegex bool
-    Levels   map[string]bool
-    Expr     string // govaluate expression
-    Field    string // when set, apply Query only to this field
+	Query    string // plain contains or regex if /.../
+	UseRegex bool
+	Levels   map[string]bool
+	Expr     string // govaluate expression
+	Field    string // when set, apply Query only to this field
 }
 
 type Evaluator struct {
@@ -49,27 +49,27 @@ func (e *Evaluator) Match(entry model.LogEntry, c Criteria) bool {
 			return false
 		}
 	}
-    // Query
-    if c.Query != "" {
-        text := entry.Raw
-        if c.Field != "" {
-            if v, ok := entry.Fields[c.Field]; ok {
-                switch t := v.(type) {
-                case string:
-                    text = t
-                default:
-                    b, _ := json.Marshal(v)
-                    text = string(b)
-                }
-            } else {
-                text = ""
-            }
-        }
-        if e.re != nil {
-            if !e.re.MatchString(text) {
-                return false
-            }
-        } else {
+	// Query
+	if c.Query != "" {
+		text := entry.Raw
+		if c.Field != "" {
+			if v, ok := entry.Fields[c.Field]; ok {
+				switch t := v.(type) {
+				case string:
+					text = t
+				default:
+					b, _ := json.Marshal(v)
+					text = string(b)
+				}
+			} else {
+				text = ""
+			}
+		}
+		if e.re != nil {
+			if !e.re.MatchString(text) {
+				return false
+			}
+		} else {
 			if !strings.Contains(strings.ToLower(text), strings.ToLower(c.Query)) {
 				return false
 			}

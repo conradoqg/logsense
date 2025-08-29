@@ -4,7 +4,6 @@ import tea "github.com/charmbracelet/bubbletea"
 
 type KeyMap struct {
 	Pause        tea.Key
-	Clear        tea.Key
 	Follow       tea.Key
 	Search       tea.Key
 	Export       tea.Key
@@ -18,19 +17,21 @@ type KeyMap struct {
 	StreamTab    tea.Key
 	FilterTab    tea.Key
 	InspectorTab tea.Key
-    Stats        tea.Key
-    NextStats    tea.Key
-    Filter       tea.Key
-    SearchNext   tea.Key
-    SearchPrev   tea.Key
-    CopyLine     tea.Key
-    ClearFilter  tea.Key
+	Stats        tea.Key
+	NextStats    tea.Key
+	Filter       tea.Key
+	SearchNext   tea.Key
+	SearchPrev   tea.Key
+	CopyLine     tea.Key
+	ClearFilter  tea.Key
+	ViewRaw      tea.Key
+	AppLogs      tea.Key
+	Buffer       tea.Key
 }
 
 func DefaultKeyMap() KeyMap {
-    return KeyMap{
+	return KeyMap{
 		Pause:        tea.Key{Type: tea.KeyRunes, Runes: []rune{' '}},
-		Clear:        tea.Key{Type: tea.KeyRunes, Runes: []rune{'c'}},
 		Follow:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'t'}},
 		Search:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'/'}},
 		Export:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'e'}},
@@ -40,18 +41,21 @@ func DefaultKeyMap() KeyMap {
 		Top:          tea.Key{Type: tea.KeyRunes, Runes: []rune{'g'}},
 		Bottom:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'G'}},
 		Help:         tea.Key{Type: tea.KeyRunes, Runes: []rune{'?'}},
-        Quit:         tea.Key{Type: tea.KeyRunes, Runes: []rune{'q'}},
+		Quit:         tea.Key{Type: tea.KeyRunes, Runes: []rune{'q'}},
 		StreamTab:    tea.Key{Type: tea.KeyTab},
 		FilterTab:    tea.Key{Type: tea.KeyShiftTab},
 		InspectorTab: tea.Key{Type: tea.KeyEnter},
-        Stats:        tea.Key{Type: tea.KeyRunes, Runes: []rune{'x'}},
-        NextStats:    tea.Key{Type: tea.KeyRunes, Runes: []rune{'X'}},
-        Filter:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'f'}},
-        SearchNext:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'n'}},
-        SearchPrev:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'N'}},
-        CopyLine:     tea.Key{Type: tea.KeyRunes, Runes: []rune{'y'}},
-        ClearFilter:  tea.Key{Type: tea.KeyRunes, Runes: []rune{'F'}},
-    }
+		Stats:        tea.Key{Type: tea.KeyRunes, Runes: []rune{'x'}},
+		NextStats:    tea.Key{Type: tea.KeyRunes, Runes: []rune{'X'}},
+		Filter:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'f'}},
+		SearchNext:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'n'}},
+		SearchPrev:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'N'}},
+		CopyLine:     tea.Key{Type: tea.KeyRunes, Runes: []rune{'y'}},
+		ClearFilter:  tea.Key{Type: tea.KeyRunes, Runes: []rune{'F'}},
+		ViewRaw:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'v'}},
+		AppLogs:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'L'}},
+		Buffer:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'B'}},
+	}
 }
 
 func keyMatches(msg tea.KeyMsg, k tea.Key) bool {

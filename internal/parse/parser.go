@@ -37,67 +37,64 @@ func fallbackLayout(a, forced string) string {
 
 // JSON lines
 type JSONParser struct {
-    schema model.Schema
-    layout string
+	schema model.Schema
+	layout string
 }
 
 func (p *JSONParser) Parse(line, source string) model.LogEntry {
-    var m map[string]any
-    _ = json.Unmarshal([]byte(line), &m)
-    e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
-    // Copy fields
-    for k, v := range m {
-        e.Fields[k] = v
-    }
-    // If there is a JSON-encoded payload inside a string field (e.g., k8s container logs with `log`),
-    // attempt to parse and merge its keys for better column discovery.
-    // Prefer common payload keys in order.
-    innerKeys := []string{"log", "msg", "message"}
-    for _, key := range innerKeys {
-        if raw, ok := m[key]; ok {
-            if s, ok := raw.(string); ok {
-                t := strings.TrimSpace(s)
-                if strings.HasPrefix(t, "{") && strings.HasSuffix(t, "}") {
-                    var inner map[string]any
-                    if err := json.Unmarshal([]byte(t), &inner); err == nil {
-                        // Merge inner fields into entry fields (do not remove original wrapper field)
-                        for ik, iv := range inner {
-                            e.Fields[ik] = iv
-                        }
-                        // Best-effort timestamp/level from inner payload if not already set
-                        if e.Timestamp == nil {
-                            its := getStringPaths(inner, []string{"ts", "time", "timestamp"})
-                            if its != "" {
-                                if t, err := time.Parse(p.layout, its); err == nil {
-                                    e.Timestamp = &t
-                                }
-                            }
-                        }
-                        if e.Level == "" {
-                            ilvl := strings.ToUpper(getStringPaths(inner, []string{"level", "lvl", "severity"}))
-                            if ilvl != "" {
-                                e.Level = normalizeLevel(p.schema, ilvl)
-                            }
-                        }
-                        break
-                    }
-                }
-            }
-        }
-    }
-    // Best-effort timestamp and level
-    ts := getStringPaths(m, []string{"ts", "time", "timestamp"})
-    if ts != "" {
-        if t, err := time.Parse(p.layout, ts); err == nil {
-            e.Timestamp = &t
-        }
+	var m map[string]any
+	_ = json.Unmarshal([]byte(line), &m)
+	e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
+	// Copy fields
+	for k, v := range m {
+		e.Fields[k] = v
+	}
+	// If there is a JSON-encoded payload inside a string field (e.g., k8s container logs with `log`),
+	// attempt to parse and merge its keys for better column discovery.
+	// Prefer common payload keys in order.
+	innerKeys := []string{"log", "msg", "message"}
+	for _, key := range innerKeys {
+		if raw, ok := m[key]; ok {
+			if s, ok := raw.(string); ok {
+				t := strings.TrimSpace(s)
+				if strings.HasPrefix(t, "{") && strings.HasSuffix(t, "}") {
+					var inner map[string]any
+					if err := json.Unmarshal([]byte(t), &inner); err == nil {
+						// Merge inner fields into entry fields (do not remove original wrapper field)
+						for ik, iv := range inner {
+							e.Fields[ik] = iv
+						}
+						// Best-effort timestamp/level from inner payload if not already set
+						if e.Timestamp == nil {
+							its := getStringPaths(inner, []string{"ts", "time", "timestamp"})
+							if its != "" {
+								if t, err := time.Parse(p.layout, its); err == nil {
+									e.Timestamp = &t
+								}
+							}
+						}
+						if e.Level == "" {
+							ilvl := strings.ToUpper(getStringPaths(inner, []string{"level", "lvl", "severity"}))
+							if ilvl != "" {
+								e.Level = normalizeLevel(p.schema, ilvl)
+							}
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	// Best-effort timestamp and level
+	ts := getStringPaths(m, []string{"ts", "time", "timestamp"})
+	if ts != "" {
+		if t, err := time.Parse(p.layout, ts); err == nil {
+			e.Timestamp = &t
+		}
 	}
 	lvl := strings.ToUpper(getStringPaths(m, []string{"level", "lvl", "severity"}))
 	if lvl != "" {
 		e.Level = normalizeLevel(p.schema, lvl)
-	}
-	if e.Level == "" {
-		e.Level = normalizeLevel(p.schema, strings.ToUpper(ts))
 	}
 	return e
 }

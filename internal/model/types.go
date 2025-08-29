@@ -104,12 +104,34 @@ func (r *Ring) Snapshot() ([]LogEntry, uint64, uint64) {
 	return out, r.total, r.dropped
 }
 
-func (r *Ring) ClearVisible() { // does not reset counters
+func (r *Ring) Cap() int { return r.cap }
+
+func (r *Ring) Resize(newCap int) {
+	if newCap <= 0 {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.size = 0
+	if newCap == r.cap {
+		return
+	}
+	// Keep most recent entries up to newCap
+	keep := r.size
+	if keep > newCap {
+		keep = newCap
+	}
+	nb := make([]LogEntry, newCap)
+	startIdx := (r.start + r.size - keep)
+	for i := 0; i < keep; i++ {
+		nb[i] = r.buf[(startIdx+i)%r.cap]
+	}
+	r.buf = nb
+	r.cap = newCap
 	r.start = 0
+	r.size = keep
 }
+
+// Removed ClearVisible: clearing the buffer is no longer supported via UI.
 
 func (e LogEntry) PrettyJSON() string {
 	b, _ := json.MarshalIndent(e.Fields, "", "  ")

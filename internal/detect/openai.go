@@ -4,12 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"hash/fnv"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	altai "github.com/sashabaranov/go-openai"
@@ -23,7 +18,6 @@ type OpenAIClient struct {
 	baseURL string
 	model   string
 	timeout time.Duration
-	mu      sync.Mutex
 }
 
 func NewOpenAIClient(apiKey, baseURL, model string, timeout time.Duration) *OpenAIClient {
@@ -67,8 +61,11 @@ func (c *OpenAIClient) callAlt(ctx context.Context, prompt string) (string, erro
 	}
 	cli := altai.NewClientWithConfig(cfg)
 	resp, err := cli.CreateChatCompletion(ctx, altai.ChatCompletionRequest{
-		Model:          c.model,
-		Messages:       []altai.ChatCompletionMessage{{Role: altai.ChatMessageRoleSystem, Content: "Você é um assistente que identifica formatos de logs e produz APENAS JSON estrito conforme um contrato"}, {Role: altai.ChatMessageRoleUser, Content: prompt}},
+		Model: c.model,
+		Messages: []altai.ChatCompletionMessage{
+			{Role: altai.ChatMessageRoleSystem, Content: "You detect log formats and return ONLY strict JSON following the specified contract. No prose, no code fences."},
+			{Role: altai.ChatMessageRoleUser, Content: prompt},
+		},
 		Temperature:    0.2,
 		ResponseFormat: &altai.ChatCompletionResponseFormat{Type: altai.ChatCompletionResponseFormatTypeJSONObject},
 	})
@@ -88,9 +85,9 @@ func buildSchemaPrompt(lines []string) string {
 		max = len(lines)
 	}
 	var b strings.Builder
-	b.WriteString("Analise as linhas de log abaixo e retorne APENAS JSON estrito com o contrato indicado.\n")
-	b.WriteString("Contrato: {formatName, probableSources, parseStrategy, timeLayout, levelMapping, schema:{fields:[{name,type,description,pathOrGroup}]}, regexPattern, confidence, sampleParsedRow}.\n")
-	b.WriteString("Linhas:\n")
+	b.WriteString("Analyze the log lines below and return ONLY strict JSON matching this contract: ")
+	b.WriteString("{formatName, probableSources, parseStrategy, timeLayout, levelMapping, schema:{fields:[{name,type,description,pathOrGroup}]}, regexPattern, confidence, sampleParsedRow}.\n")
+	b.WriteString("Lines:\n")
 	for i := 0; i < max; i++ {
 		b.WriteString(lines[i])
 		b.WriteByte('\n')
@@ -100,59 +97,4 @@ func buildSchemaPrompt(lines []string) string {
 
 func toSchema(a aiResponse) model.Schema {
 	return model.Schema{FormatName: a.FormatName, ProbableSources: a.ProbableSources, ParseStrategy: a.ParseStrategy, TimeLayout: a.TimeLayout, LevelMapping: a.LevelMapping, RegexPattern: a.RegexPattern, Fields: a.Schema.Fields, Confidence: a.Confidence, SampleParsedRow: a.SampleParsedRow}
-}
-
-// Simple file-based cache
-type Cache struct {
-	path string
-	mu   sync.Mutex
-	m    map[string]model.Schema
-}
-
-func NewCache() *Cache {
-	dir, _ := os.UserCacheDir()
-	if dir == "" {
-		dir = "."
-	}
-	p := filepath.Join(dir, "logsense", "schemas.json")
-	_ = os.MkdirAll(filepath.Dir(p), 0o755)
-	c := &Cache{path: p, m: map[string]model.Schema{}}
-	c.load()
-	return c
-}
-
-func (c *Cache) key(path string, sample []string) string {
-	h := fnv.New64a()
-	h.Write([]byte(path))
-	for i := 0; i < len(sample) && i < 8; i++ {
-		h.Write([]byte(sample[i]))
-	}
-	return fmt.Sprintf("%x", h.Sum64())
-}
-
-func (c *Cache) Get(path string, sample []string) (model.Schema, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	s, ok := c.m[c.key(path, sample)]
-	return s, ok
-}
-
-func (c *Cache) Put(path string, sample []string, s model.Schema) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m[c.key(path, sample)] = s
-	c.save()
-}
-
-func (c *Cache) load() {
-	b, err := os.ReadFile(c.path)
-	if err != nil {
-		return
-	}
-	_ = json.Unmarshal(b, &c.m)
-}
-
-func (c *Cache) save() {
-	b, _ := json.MarshalIndent(c.m, "", "  ")
-	_ = os.WriteFile(c.path, b, 0o644)
 }

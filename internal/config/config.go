@@ -24,7 +24,6 @@ type Config struct {
 	Offline      bool
 	OpenAIModel  string
 	OpenAIBase   string
-	LogLevel     string
 	TimeLayout   string
 	ForceFormat  string
 	ExportFormat string
@@ -47,14 +46,13 @@ func Load() (*Config, error) {
 	fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
 	fs.BoolVar(&cfg.Follow, "follow", false, "follow file (tail -f)")
 	fs.BoolVar(&cfg.UseStdin, "stdin", false, "read from stdin (default: auto if piped)")
-	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 50000, "ring buffer size (min 50000)")
+	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 200000, "ring buffer size (min 50000)")
 	fs.IntVar(&cfg.BlockSizeMB, "block-size-mb", 0, "when reading a file (no follow), read only the last N MB instead of the whole file (0=all)")
 	theme := string(ThemeDark)
 	fs.StringVar(&theme, "theme", string(ThemeDark), "theme: dark|light")
 	fs.BoolVar(&cfg.Offline, "offline", false, "disable OpenAI and work offline only")
 	fs.StringVar(&cfg.OpenAIModel, "openai-model", getenvDefault("LOGSENSE_OPENAI_MODEL", "gpt-4o-mini"), "OpenAI model override")
 	fs.StringVar(&cfg.OpenAIBase, "openai-base-url", getenvDefault("LOGSENSE_OPENAI_BASE_URL", ""), "OpenAI base URL override")
-	fs.StringVar(&cfg.LogLevel, "log-level", "info", "internal log level: debug|info|warn|error")
 	fs.StringVar(&cfg.TimeLayout, "time-layout", "", "force time layout (Go format)")
 	fs.StringVar(&cfg.ForceFormat, "format", "", "force format: json|regex|logfmt|apache|syslog")
 	fs.StringVar(&cfg.ExportFormat, "export", "", "export filtered view: csv|json")
