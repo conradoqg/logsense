@@ -102,6 +102,10 @@ type Model struct {
 	modalTitle  string
 	modalBody   string
 
+	// Help menu state
+	helpItems []helpItem
+	helpSel   int
+
 	// Search state (navigation)
 	searchActive  bool
 	searchPattern string
@@ -168,6 +172,87 @@ func initialModel(ctx context.Context, cfg *config.Config) *Model {
 	// Initialize columns so a column is visibly selected before detection
 	m.applyColumns(m.visibleColumns(m.deriveColumns()))
 	return m
+}
+
+type helpItem struct {
+    group string
+    text  string
+    key   tea.Key
+}
+
+func keyCmd(k tea.Key) tea.Cmd {
+    return func() tea.Msg {
+        if k.Type == tea.KeyRunes {
+            return tea.KeyMsg{Type: k.Type, Runes: k.Runes}
+        }
+        return tea.KeyMsg{Type: k.Type}
+    }
+}
+
+func keyLabel(k tea.Key) string {
+    switch k.Type {
+    case tea.KeyRunes:
+        if len(k.Runes) == 1 {
+            r := k.Runes[0]
+            if r == ' ' {
+                return "space"
+            }
+            return string(r)
+        }
+        return strings.ToLower(string(k.Runes))
+    case tea.KeyEnter:
+        return "enter"
+    case tea.KeyEsc:
+        return "esc"
+    case tea.KeyTab:
+        return "tab"
+    case tea.KeyShiftTab:
+        return "shift-tab"
+    case tea.KeyLeft:
+        return "left"
+    case tea.KeyRight:
+        return "right"
+    case tea.KeyUp:
+        return "up"
+    case tea.KeyDown:
+        return "down"
+    case tea.KeyPgUp:
+        return "pgup"
+    case tea.KeyPgDown:
+        return "pgdown"
+    default:
+        return strings.ToLower(k.String())
+    }
+}
+
+func (m *Model) buildHelpItems() []helpItem {
+    km := m.keymap
+    items := []helpItem{
+        {group: "Navigation", text: "Go to top", key: km.Top},
+        {group: "Navigation", text: "Go to bottom", key: km.Bottom},
+        {group: "Navigation", text: "Previous column", key: tea.Key{Type: tea.KeyLeft}},
+        {group: "Navigation", text: "Next column", key: tea.Key{Type: tea.KeyRight}},
+
+        {group: "Search", text: "Search", key: km.Search},
+        {group: "Search", text: "Search next", key: km.SearchNext},
+        {group: "Search", text: "Search prev", key: km.SearchPrev},
+
+        {group: "Filter", text: "Filter current column", key: km.Filter},
+        {group: "Filter", text: "Clear filter", key: km.ClearFilter},
+
+        {group: "Views", text: "Inspector", key: m.keymap.InspectorTab},
+        {group: "Views", text: "View raw log", key: m.keymap.ViewRaw},
+        {group: "Views", text: "Application logs", key: m.keymap.AppLogs},
+        {group: "Views", text: "Stats for column", key: m.keymap.Stats},
+
+        {group: "Control", text: "Pause/Resume", key: km.Pause},
+        {group: "Control", text: "Toggle follow", key: km.Follow},
+        {group: "Control", text: "Change buffer size", key: km.Buffer},
+        {group: "Control", text: "Export", key: km.Export},
+        {group: "Control", text: "Re-detect format", key: km.Redetect},
+        {group: "Control", text: "Quit", key: km.Quit},
+    }
+    return items
 }
 
 // IO and pipeline orchestration
@@ -398,12 +483,46 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
-				m.modalActive = false
-				return m, nil
+				// For help modal, Enter is handled separately below
+				if m.modalKind != modalHelp {
+					m.modalActive = false
+					return m, nil
+				}
 			}
 			if msg.Type == tea.KeyRunes && (msg.String() == "C" || msg.String() == "c") && (m.modalKind == modalInspector || m.modalKind == modalStats) {
 				copyToClipboard(m.modalBody)
 				m.lastMsg = "copied to clipboard"
+				return m, nil
+			}
+			// Help modal navigation and actions
+			if m.modalKind == modalHelp {
+				if msg.Type == tea.KeyUp {
+					if m.helpSel > 0 {
+						m.helpSel--
+						m.modalVP.SetContent(m.renderHelp())
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					if m.helpSel+1 < len(m.helpItems) {
+						m.helpSel++
+						m.modalVP.SetContent(m.renderHelp())
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyEnter {
+					if len(m.helpItems) > 0 {
+						it := m.helpItems[m.helpSel]
+						m.modalActive = false
+						return m, keyCmd(it.key)
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyEsc || (msg.Type == tea.KeyRunes && (msg.String() == "q" || msg.String() == "?")) {
+					m.modalActive = false
+					return m, nil
+				}
+				// ignore other keys in help modal
 				return m, nil
 			}
 			// Route typing to text input when search/filter modal is active
@@ -826,6 +945,13 @@ func (m *Model) View() string {
 }
 
 func (m *Model) refreshFiltered() {
+    // Remember if the cursor was at the bottom before refresh
+    wasAtBottom := false
+    if prev := len(m.tbl.Rows()); prev > 0 {
+        if c := m.tbl.Cursor(); c >= prev-1 {
+            wasAtBottom = true
+        }
+    }
 	// Only apply field-scoped filter via m.criteria (set when applying filter)
 	// Do not derive filtering from the search input; search is navigational only.
 	if ev, err := filter.NewEvaluator(m.criteria); err == nil {
@@ -889,10 +1015,16 @@ func (m *Model) refreshFiltered() {
 		}
 		rows = append(rows, row)
 	}
-	m.applyColumns(cols)
-	m.tbl.SetRows(rows)
-	// Keep current selection visible on refresh
-	m.ensureCursorVisible()
+    m.applyColumns(cols)
+    m.tbl.SetRows(rows)
+    // If we were at the bottom prior to refresh, keep sticking to the latest row
+    if wasAtBottom {
+        if n := len(rows); n > 0 {
+            m.tbl.SetCursor(n - 1)
+        }
+    }
+    // Keep current selection visible on refresh
+    m.ensureCursorVisible()
 }
 
 func (m *Model) deriveColumns() []string {
@@ -1202,15 +1334,13 @@ func (m *Model) renderStream() string {
 	} else {
 		tv = tv + "\n" + underline
 	}
-	// Build minimal hint/status trail: only help unless in filter/buffer mode
-	hint := "  [?]=help"
-	if m.inlineMode == inlineFilter {
-		hint += "  [Enter]=apply [Esc]=cancel [F]=clear filter"
-	} else if m.inlineMode == inlineBuffer {
-		hint += "  [Enter]=apply [Esc]=cancel"
-	} else if m.criteria.Query != "" || m.criteria.Field != "" {
-		hint += "  [F]=clear filter"
-	}
+    // Build minimal hint/status trail: only help unless in filter/buffer mode
+    hint := "  [?]=help"
+    if m.inlineMode == inlineFilter {
+        hint += "  [enter]=apply [esc]=cancel"
+    } else if m.inlineMode == inlineBuffer {
+        hint += "  [enter]=apply [esc]=cancel"
+    }
 	// Current cursor position among filtered rows
 	cur := m.tbl.Cursor()
 	if cur < 0 {
@@ -1230,26 +1360,52 @@ func (m *Model) renderStream() string {
 		map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
 		curDisp, total,
 		len(m.filtered), m.total, m.dropped, m.invalidCount, m.schema.FormatName, m.follow, m.source, hint, m.lastMsg, busy)
-	// Inline input line above status bar
-	var bottom string
+    // Inline input line above status bar (or active filter summary)
+    var bottom string
 	if m.inlineMode == inlineSearch {
-		// Show current term and shortcuts; stays until ESC (vim-like)
+		// Show current term and shortcuts; stays until esc (vim-like)
 		term := m.search.Value()
 		if m.searchEditing {
-			bottom = fmt.Sprintf("search: %s    [Enter]=apply [Esc]=quit mode [n/N]=next/prev", term)
+			bottom = fmt.Sprintf("search: %s    [enter]=apply [esc]=quit mode [n/N]=next/prev", term)
 		} else {
-			// Read-only navigation: n/N work; Enter toggles back to edit
+			// Read-only navigation: n/N work; enter toggles back to edit
 			disp := m.searchPattern
 			if disp == "" {
 				disp = term
 			}
-			bottom = fmt.Sprintf("search: %s    [Enter]=edit [Esc]=quit mode [n/N]=next/prev", disp)
+			bottom = fmt.Sprintf("search: %s    [enter]=edit [esc]=quit mode [n/N]=next/prev", disp)
 		}
-	} else if m.inlineMode == inlineFilter {
-		bottom = fmt.Sprintf("Filter %s: %s    [Enter]=apply [Esc]=cancel [F]=clear filter", m.currentColumn(), m.search.View())
-	} else if m.inlineMode == inlineBuffer {
-		bottom = fmt.Sprintf("Max buffer (lines): %s    [Enter]=apply [Esc]=cancel", m.search.View())
-	}
+    } else if m.inlineMode == inlineFilter {
+        // Show the column captured at filter-open time
+        field := m.criteria.Field
+        if field == "" {
+            // Fallback to currently selected column if somehow unset
+            all := m.deriveColumns()
+            if len(all) > 0 {
+                if m.selColIdx >= len(all) {
+                    m.selColIdx = len(all) - 1
+                }
+                field = all[m.selColIdx]
+            } else {
+                field = m.currentColumn()
+            }
+        }
+        bottom = fmt.Sprintf("Filter %s: %s    [enter]=apply [esc]=cancel [F]=clear filter", field, m.search.View())
+    } else if m.inlineMode == inlineBuffer {
+        bottom = fmt.Sprintf("Max buffer (lines): %s    [enter]=apply [esc]=cancel", m.search.View())
+    } else if m.criteria.Query != "" || m.criteria.Field != "" {
+        // Show active filter summary when a filter is applied
+        field := m.criteria.Field
+        q := m.criteria.Query
+        if m.criteria.UseRegex && q != "" {
+            q = "/" + q + "/"
+        }
+        if field != "" && q != "" {
+            bottom = fmt.Sprintf("Filter %s: %s    [F]=clear filter", field, q)
+        } else if q != "" { // fallback
+            bottom = fmt.Sprintf("Filter: %s    [F]=clear filter", q)
+        }
+    }
 	// Always render a sub status bar to keep layout stable
 	if bottom == "" {
 		// minimal spacer line
@@ -1331,29 +1487,62 @@ func (m *Model) renderInspector() string {
 }
 
 func (m *Model) renderHelp() string {
-	return m.styles.Help.Render("Shortcuts:\n" +
-		"  Space: Pause/Resume\n" +
-		"  /: Search (text or /regex/), n/N: next/prev\n" +
-		"  f: Filter current column  |  F: Clear filter\n" +
-		"  Tab/Shift-Tab: Stream/Filters tab\n" +
-		"  Enter: Inspector (JSON modal)  |  v: View raw log  |  L: App logs  |  B: Change buffer size\n" +
-		"  t: Toggle follow\n" +
-		"  y: Copy selected line\n" +
-		"  e: Export (uses --export/--out)\n" +
-		"  s: Summarize via OpenAI\n" +
-		"  i: Explain via OpenAI\n" +
-		"  r: Re-detect format\n" +
-		"  g/G: Go to top/bottom\n" +
-		"  Left/Right: Previous/Next columns\n" +
-		"  ?: Toggle help  |  q: Quit\n")
+    // Build an organized, navigable help menu
+    if len(m.helpItems) == 0 {
+        m.helpItems = m.buildHelpItems()
+    }
+    // Ensure selection is in range
+    if m.helpSel < 0 {
+        m.helpSel = 0
+    }
+    if m.helpSel >= len(m.helpItems) {
+        m.helpSel = len(m.helpItems) - 1
+    }
+    lines := []string{"Shortcuts:"}
+    currentGroup := ""
+    lineIndexOfSel := 0
+    for i, it := range m.helpItems {
+        if it.group != currentGroup {
+            currentGroup = it.group
+            lines = append(lines, "")
+            lines = append(lines, currentGroup+":")
+        }
+        prefix := "  "
+        if i == m.helpSel {
+            prefix = "> "
+            lineIndexOfSel = len(lines)
+        }
+        key := keyLabel(it.key)
+        lines = append(lines, fmt.Sprintf("%s[%s] %s", prefix, key, it.text))
+    }
+    // Adjust viewport to keep selection visible
+    if m.modalVP.Height > 0 {
+        top := m.modalVP.YOffset
+        bottom := top + m.modalVP.Height - 1
+        if lineIndexOfSel <= top {
+            if lineIndexOfSel-1 >= 0 {
+                m.modalVP.YOffset = lineIndexOfSel - 1
+            } else {
+                m.modalVP.YOffset = 0
+            }
+        } else if lineIndexOfSel >= bottom {
+            m.modalVP.YOffset = lineIndexOfSel - m.modalVP.Height + 2
+            if m.modalVP.YOffset < 0 {
+                m.modalVP.YOffset = 0
+            }
+        }
+    }
+    return m.styles.Help.Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) openHelpModal() {
-	m.modalActive = true
-	m.modalKind = modalHelp
-	m.modalTitle = "Help"
-	m.modalBody = m.renderHelp()
-	m.resizeModal()
+    m.modalActive = true
+    m.modalKind = modalHelp
+    m.modalTitle = "Help"
+    m.helpItems = m.buildHelpItems()
+    m.helpSel = 0
+    m.modalBody = m.renderHelp()
+    m.resizeModal()
 }
 
 func (m *Model) openStatsModal() {
@@ -1421,18 +1610,22 @@ func (m *Model) resizeModal() {
 }
 
 func (m *Model) renderModal() string {
-	// Build content
-	content := ""
-	switch m.modalKind {
-	case modalSearch:
-		content = m.search.View() + "\n[Enter]=apply  [Esc]=close  [n/N]=next/prev"
-	case modalFilter:
-		content = m.search.View() + "\n[Enter]=apply  [Esc]=close"
-	case modalInspector, modalStats, modalRaw, modalLogs:
-		content = m.modalVP.View() + "\n[Esc/Enter]=close  [C]=copy"
-	default:
-		content = m.modalVP.View() + "\n[Esc/Enter]=close"
-	}
+    // Build content
+    content := ""
+    switch m.modalKind {
+    case modalHelp:
+        // Update content dynamically for help menu
+        m.modalVP.SetContent(m.renderHelp())
+        content = m.modalVP.View() + "\n[esc]=close  [enter]=run"
+    case modalSearch:
+        content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
+    case modalFilter:
+        content = m.search.View() + "\n[enter]=apply  [esc]=close"
+    case modalInspector, modalStats, modalRaw, modalLogs:
+        content = m.modalVP.View() + "\n[esc/enter]=close  [C]=copy"
+    default:
+        content = m.modalVP.View() + "\n[esc/enter]=close"
+    }
 	boxW := m.termWidth - 6
 	if boxW < 20 {
 		boxW = 20
