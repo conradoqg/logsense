@@ -1,0 +1,3 @@
+time=2025-01-01T12:00:00Z level=info service=api msg="server started" port=8080
+time=2025-01-01T12:00:01Z level=warn user_id=42 msg="slow request" path=/v1/items lat_ms=512
+

@@ -1,0 +1,4 @@
+{"ts":"2025-01-01T12:00:00Z","level":"info","service":"api","msg":"server started","port":8080}
+{"ts":"2025-01-01T12:00:01Z","level":"warn","service":"api","msg":"slow request","lat_ms":512}
+{"ts":"2025-01-01T12:00:02Z","level":"error","service":"api","msg":"db timeout","err":"context deadline exceeded"}
+
