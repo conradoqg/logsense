@@ -27,6 +27,8 @@ type KeyMap struct {
 	ViewRaw      tea.Key
 	AppLogs      tea.Key
 	Buffer       tea.Key
+	IncColWidth  tea.Key
+	DecColWidth  tea.Key
 }
 
 func DefaultKeyMap() KeyMap {
@@ -55,6 +57,8 @@ func DefaultKeyMap() KeyMap {
 		ViewRaw:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'v'}},
 		AppLogs:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'L'}},
 		Buffer:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'B'}},
+		IncColWidth:  tea.Key{Type: tea.KeyRunes, Runes: []rune{']'}},
+		DecColWidth:  tea.Key{Type: tea.KeyRunes, Runes: []rune{'['}},
 	}
 }
 

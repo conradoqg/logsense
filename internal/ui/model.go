@@ -78,9 +78,20 @@ type Model struct {
 	termHeight  int
 	scanBufSize int
 
+	// Dirty flags to minimize rebuilds
+	rowsDirty    bool
+	columnsDirty bool
+
 	// Filter
 	criteria filter.Criteria
 	eval     *filter.Evaluator
+
+	// Column sizing adjustments (by column name)
+	colWidthAdj map[string]int
+
+	// Discovered columns in order of first appearance across logs
+	discovered    []string
+	discoveredSet map[string]bool
 
 	// status
 	source       string
@@ -140,18 +151,20 @@ const (
 
 func initialModel(ctx context.Context, cfg *config.Config) *Model {
 	m := &Model{
-		ctx:         ctx,
-		cfg:         cfg,
-		ring:        model.NewRing(cfg.MaxBuffer),
-		tab:         tabStream,
-		state:       stateRunning,
-		help:        help.New(),
-		styles:      NewStyles(cfg.Theme == config.ThemeDark),
-		keymap:      DefaultKeyMap(),
-		search:      textinput.New(),
-		spin:        spinner.New(),
-		follow:      cfg.Follow,
-		scanBufSize: 1024 * 1024,
+		ctx:          ctx,
+		cfg:          cfg,
+		ring:         model.NewRing(cfg.MaxBuffer),
+		tab:          tabStream,
+		state:        stateRunning,
+		help:         help.New(),
+		styles:       NewStyles(cfg.Theme == config.ThemeDark),
+		keymap:       DefaultKeyMap(),
+		search:       textinput.New(),
+		spin:         spinner.New(),
+		follow:       cfg.Follow,
+		scanBufSize:  1024 * 1024,
+		rowsDirty:    true,
+		columnsDirty: true,
 	}
 	m.spin.Spinner = spinner.Dot
 	m.search.Placeholder = "search... (text or /regex/)"
@@ -163,96 +176,100 @@ func initialModel(ctx context.Context, cfg *config.Config) *Model {
 	m.tbl.SetColumns([]table.Column{{Title: "ts", Width: 19}, {Title: "level", Width: 6}, {Title: "source", Width: 12}, {Title: "message", Width: 80}})
 	// Remove default padding to make width math exact
 	ts := table.DefaultStyles()
-	ts.Header = lipgloss.NewStyle()
-	ts.Cell = lipgloss.NewStyle()
+	ts.Header = lipgloss.NewStyle().PaddingRight(1)
+	ts.Cell = lipgloss.NewStyle().PaddingRight(1)
 	ts.Selected = m.styles.TableStyles.Selected
 	m.tbl.SetStyles(ts)
 	m.maxCols = 6
 	m.selColIdx = 0
+	m.colWidthAdj = map[string]int{}
+	m.discoveredSet = map[string]bool{}
 	// Initialize columns so a column is visibly selected before detection
 	m.applyColumns(m.visibleColumns(m.deriveColumns()))
 	return m
 }
 
 type helpItem struct {
-    group string
-    text  string
-    key   tea.Key
+	group string
+	text  string
+	key   tea.Key
 }
 
 func keyCmd(k tea.Key) tea.Cmd {
-    return func() tea.Msg {
-        if k.Type == tea.KeyRunes {
-            return tea.KeyMsg{Type: k.Type, Runes: k.Runes}
-        }
-        return tea.KeyMsg{Type: k.Type}
-    }
+	return func() tea.Msg {
+		if k.Type == tea.KeyRunes {
+			return tea.KeyMsg{Type: k.Type, Runes: k.Runes}
+		}
+		return tea.KeyMsg{Type: k.Type}
+	}
 }
 
 func keyLabel(k tea.Key) string {
-    switch k.Type {
-    case tea.KeyRunes:
-        if len(k.Runes) == 1 {
-            r := k.Runes[0]
-            if r == ' ' {
-                return "space"
-            }
-            return string(r)
-        }
-        return strings.ToLower(string(k.Runes))
-    case tea.KeyEnter:
-        return "enter"
-    case tea.KeyEsc:
-        return "esc"
-    case tea.KeyTab:
-        return "tab"
-    case tea.KeyShiftTab:
-        return "shift-tab"
-    case tea.KeyLeft:
-        return "left"
-    case tea.KeyRight:
-        return "right"
-    case tea.KeyUp:
-        return "up"
-    case tea.KeyDown:
-        return "down"
-    case tea.KeyPgUp:
-        return "pgup"
-    case tea.KeyPgDown:
-        return "pgdown"
-    default:
-        return strings.ToLower(k.String())
-    }
+	switch k.Type {
+	case tea.KeyRunes:
+		if len(k.Runes) == 1 {
+			r := k.Runes[0]
+			if r == ' ' {
+				return "space"
+			}
+			return string(r)
+		}
+		return strings.ToLower(string(k.Runes))
+	case tea.KeyEnter:
+		return "enter"
+	case tea.KeyEsc:
+		return "esc"
+	case tea.KeyTab:
+		return "tab"
+	case tea.KeyShiftTab:
+		return "shift-tab"
+	case tea.KeyLeft:
+		return "left"
+	case tea.KeyRight:
+		return "right"
+	case tea.KeyUp:
+		return "up"
+	case tea.KeyDown:
+		return "down"
+	case tea.KeyPgUp:
+		return "pgup"
+	case tea.KeyPgDown:
+		return "pgdown"
+	default:
+		return strings.ToLower(k.String())
+	}
 }
 
 func (m *Model) buildHelpItems() []helpItem {
-    km := m.keymap
-    items := []helpItem{
-        {group: "Navigation", text: "Go to top", key: km.Top},
-        {group: "Navigation", text: "Go to bottom", key: km.Bottom},
-        {group: "Navigation", text: "Previous column", key: tea.Key{Type: tea.KeyLeft}},
-        {group: "Navigation", text: "Next column", key: tea.Key{Type: tea.KeyRight}},
+	km := m.keymap
+	items := []helpItem{
+		{group: "Navigation", text: "Go to top", key: km.Top},
+		{group: "Navigation", text: "Go to bottom", key: km.Bottom},
+		{group: "Navigation", text: "Previous column", key: tea.Key{Type: tea.KeyLeft}},
+		{group: "Navigation", text: "Next column", key: tea.Key{Type: tea.KeyRight}},
+		{group: "Columns", text: "Increase column width", key: km.IncColWidth},
+		{group: "Columns", text: "Decrease column width", key: km.DecColWidth},
 
-        {group: "Search", text: "Search", key: km.Search},
-        {group: "Search", text: "Search next", key: km.SearchNext},
-        {group: "Search", text: "Search prev", key: km.SearchPrev},
+		{group: "Search", text: "Search", key: km.Search},
+		{group: "Search", text: "Search next", key: km.SearchNext},
+		{group: "Search", text: "Search prev", key: km.SearchPrev},
 
-        {group: "Filter", text: "Filter current column", key: km.Filter},
-        {group: "Filter", text: "Clear filter", key: km.ClearFilter},
+		{group: "Filter", text: "Filter current column", key: km.Filter},
+		{group: "Filter", text: "Clear filter", key: km.ClearFilter},
 
-        {group: "Views", text: "Inspector", key: m.keymap.InspectorTab},
-        {group: "Views", text: "View raw log", key: m.keymap.ViewRaw},
-        {group: "Views", text: "Application logs", key: m.keymap.AppLogs},
-        {group: "Views", text: "Stats for column", key: m.keymap.Stats},
+		{group: "Views", text: "Inspector", key: m.keymap.InspectorTab},
+		{group: "Views", text: "View raw log", key: m.keymap.ViewRaw},
+		{group: "Views", text: "Application logs", key: m.keymap.AppLogs},
+		{group: "Views", text: "Stats for column", key: m.keymap.Stats},
 
-        {group: "Control", text: "Pause/Resume", key: km.Pause},
-        {group: "Control", text: "Toggle follow", key: km.Follow},
-        {group: "Control", text: "Change buffer size", key: km.Buffer},
-        {group: "Control", text: "Export", key: km.Export},
-        {group: "Control", text: "Re-detect format", key: km.Redetect},
-        {group: "Control", text: "Quit", key: km.Quit},
-    }
-    return items
+		{group: "Control", text: "Pause/Resume", key: km.Pause},
+		{group: "Control", text: "Toggle follow", key: km.Follow},
+		{group: "Control", text: "Change buffer size", key: km.Buffer},
+		{group: "Control", text: "Export", key: km.Export},
+		{group: "Control", text: "Re-detect format", key: km.Redetect},
+		{group: "Control", text: "Quit", key: km.Quit},
+	}
+	return items
 }
 
 // IO and pipeline orchestration
@@ -274,25 +291,38 @@ func setupPipeline(m *Model) tea.Cmd {
 	logx.Infof("ingest: source=%s path=%s follow=%v blockBytes=%d", m.source, m.cfg.FilePath, m.cfg.Follow, block)
 	// Prepare detection: collect first N lines then pick parser
 	return func() tea.Msg {
-		sample := make([]string, 0, 50)
-		timeout := time.After(1500 * time.Millisecond)
-		for len(sample) < 50 {
+		// Buffer for detection: wait at least 1 second AND at least 1 line.
+		// Keep all lines read during this window so nothing is dropped.
+		const maxSample = 200
+		buffered := make([]ingest.Line, 0, 1024)
+		timer := time.NewTimer(1 * time.Second)
+		defer timer.Stop()
+		haveLine := false
+		minElapsed := false
+		for !(haveLine && minElapsed) {
 			select {
 			case l, ok := <-m.lines:
 				if !ok {
+					// No more lines; if none were seen, quit; otherwise proceed to detect.
+					if !haveLine {
+						return tea.Quit
+					}
+					minElapsed = true
 					break
 				}
-				sample = append(sample, l.Text)
-				if len(sample) >= 50 { // quick detection on first 50 entries
-					goto DETECT
-				}
-			case <-timeout:
-				goto DETECT
+				buffered = append(buffered, l)
+				haveLine = true
+			case <-timer.C:
+				minElapsed = true
 			case <-m.ctx.Done():
 				return tea.Quit
 			}
 		}
-	DETECT:
+		// Build sample for heuristics from the first lines we buffered (up to maxSample)
+		sample := make([]string, 0, maxSample)
+		for i := 0; i < len(buffered) && i < maxSample; i++ {
+			sample = append(sample, buffered[i].Text)
+		}
 		// Heuristics
 		g := detect.Heuristics(sample)
 		m.schema = g.Schema
@@ -312,11 +342,11 @@ func setupPipeline(m *Model) tea.Cmd {
 		}
 		p, _ := parse.NewParser(m.schema, m.cfg.TimeLayout)
 		m.parser = p
-		// Replay sampled lines so small files are not lost and infer columns from parsed fields
+		// Replay ALL buffered lines so none are lost and infer columns from parsed fields
 		fieldSet := map[string]struct{}{}
 		var sampleRow map[string]any
-		for _, s := range sample {
-			e := p.Parse(s, m.source)
+		for _, bl := range buffered {
+			e := p.Parse(bl.Text, bl.Source)
 			if sampleRow == nil {
 				sampleRow = e.Fields
 			}
@@ -327,6 +357,10 @@ func setupPipeline(m *Model) tea.Cmd {
 				fieldSet[k] = struct{}{}
 			}
 			m.ring.Push(e)
+			if m.updateDiscoveryFromEntry(e) {
+				m.columnsDirty = true
+			}
+			m.rowsDirty = true
 		}
 		if len(fieldSet) > 0 {
 			keys := make([]string, 0, len(fieldSet))
@@ -416,8 +450,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.termWidth, m.termHeight = msg.Width, msg.Height
-		// Fit table height: reserve 1 for table header, 1 for underline, 1 for sub-status, 1 for status
-		h := msg.Height - 4
+		// Fit table height: reserve 1 for table header, 1 for sub-status, 1 for status
+		h := msg.Height - 3
 		if h < 1 {
 			h = 1
 		}
@@ -655,6 +689,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
+		case keyMatches(msg, m.keymap.IncColWidth):
+			// Increase selected column width
+			all := m.deriveColumns()
+			if len(all) > 0 {
+				if m.selColIdx >= len(all) {
+					m.selColIdx = len(all) - 1
+				}
+				c := all[m.selColIdx]
+				if m.colWidthAdj == nil {
+					m.colWidthAdj = map[string]int{}
+				}
+				m.colWidthAdj[c] += 2
+				m.refreshFiltered()
+			}
+			return m, nil
+		case keyMatches(msg, m.keymap.DecColWidth):
+			// Decrease selected column width
+			all := m.deriveColumns()
+			if len(all) > 0 {
+				if m.selColIdx >= len(all) {
+					m.selColIdx = len(all) - 1
+				}
+				c := all[m.selColIdx]
+				if m.colWidthAdj == nil {
+					m.colWidthAdj = map[string]int{}
+				}
+				m.colWidthAdj[c] -= 2
+				m.refreshFiltered()
+			}
+			return m, nil
 		case keyMatches(msg, m.keymap.Filter):
 			// Open inline filter input on selected column
 			m.search.Prompt = "f> "
@@ -815,11 +879,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for l := range m.lines {
 					e := m.parser.Parse(l.Text, l.Source)
 					m.ring.Push(e)
+					if m.updateDiscoveryFromEntry(e) {
+						m.columnsDirty = true
+					}
+					m.rowsDirty = true
 				}
 				return loadDoneMsg{}
 			}
 			// Set columns from detected schema and render immediately; start async drain
 			m.applyColumns(m.visibleColumns(m.deriveColumns()))
+			m.rowsDirty = true
+			m.columnsDirty = true
 			m.refreshFiltered()
 			if n := len(m.tbl.Rows()); n > 0 {
 				m.tbl.SetCursor(n - 1)
@@ -844,6 +914,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.applyColumns(m.visibleColumns(all))
+		m.rowsDirty = true
+		m.columnsDirty = true
 		m.refreshFiltered()
 		if n := len(m.tbl.Rows()); n > 0 {
 			m.tbl.SetCursor(n - 1)
@@ -853,6 +925,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.netBusy = false
 		m.lastMsg = ""
 		logx.Infof("ingest: file load complete")
+		m.rowsDirty = true
 		m.refreshFiltered()
 	case openaiStartMsg:
 		m.netBusy = true
@@ -882,6 +955,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.parser != nil {
 						e := m.parser.Parse(l.Text, l.Source)
 						m.ring.Push(e)
+						if m.updateDiscoveryFromEntry(e) {
+							m.columnsDirty = true
+						}
+						m.rowsDirty = true
 					}
 				default:
 					i = 999999 // break outer
@@ -905,7 +982,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				j = 999999
 			}
 		}
-		m.refreshFiltered()
+		// Refresh when flagged dirty or if table has no rows but we have data
+		doRefresh := m.rowsDirty || m.columnsDirty
+		if !doRefresh {
+			if nRows := len(m.tbl.Rows()); nRows == 0 {
+				if ents, _, _ := m.ring.Snapshot(); len(ents) > 0 {
+					doRefresh = true
+				}
+			}
+		}
+		if doRefresh {
+			m.refreshFiltered()
+			m.rowsDirty = false
+			m.columnsDirty = false
+		}
 		return m, tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return tickMsg{} })
 	}
 
@@ -945,13 +1035,13 @@ func (m *Model) View() string {
 }
 
 func (m *Model) refreshFiltered() {
-    // Remember if the cursor was at the bottom before refresh
-    wasAtBottom := false
-    if prev := len(m.tbl.Rows()); prev > 0 {
-        if c := m.tbl.Cursor(); c >= prev-1 {
-            wasAtBottom = true
-        }
-    }
+	// Remember if the cursor was at the bottom before refresh
+	wasAtBottom := false
+	if prev := len(m.tbl.Rows()); prev > 0 {
+		if c := m.tbl.Cursor(); c >= prev-1 {
+			wasAtBottom = true
+		}
+	}
 	// Only apply field-scoped filter via m.criteria (set when applying filter)
 	// Do not derive filtering from the search input; search is navigational only.
 	if ev, err := filter.NewEvaluator(m.criteria); err == nil {
@@ -967,9 +1057,17 @@ func (m *Model) refreshFiltered() {
 		logx.Warnf("buffer overflow: dropped +%d (total=%d, cap=%d). Consider increasing --max-buffer (current=%d).", delta, m.dropped, m.ring.Cap(), m.cfg.MaxBuffer)
 	}
 	m.filtered = m.filtered[:0]
+	// One-time discovery fallback for non-follow full file drain: if not discovered yet, derive from current entries.
+	if len(m.discovered) == 0 {
+		for i := range entries {
+			_ = m.updateDiscoveryFromEntry(entries[i])
+		}
+	}
+	// Determine visible columns and precompute widths once per refresh
 	allCols := m.deriveColumns()
 	cols := m.visibleColumns(allCols)
-
+	widths := m.computeWidths(cols)
+	// Build filtered slice from ring snapshot
 	for i := range entries {
 		e := entries[i]
 		if m.eval != nil && !m.eval.Match(e, m.criteria) {
@@ -986,7 +1084,6 @@ func (m *Model) refreshFiltered() {
 			// First cell: invalid marker
 			row = append(row, "·")
 			// Spread raw text across all data columns using their visible widths
-			widths := m.computeWidths(cols)
 			r := []rune(e.Raw)
 			pos := 0
 			for j := range cols {
@@ -1015,25 +1112,30 @@ func (m *Model) refreshFiltered() {
 		}
 		rows = append(rows, row)
 	}
-    m.applyColumns(cols)
-    m.tbl.SetRows(rows)
-    // If we were at the bottom prior to refresh, keep sticking to the latest row
-    if wasAtBottom {
-        if n := len(rows); n > 0 {
-            m.tbl.SetCursor(n - 1)
-        }
-    }
-    // Keep current selection visible on refresh
-    m.ensureCursorVisible()
+	m.applyColumns(cols)
+	m.tbl.SetRows(rows)
+	// If we were at the bottom prior to refresh, keep sticking to the latest row
+	if wasAtBottom {
+		if n := len(rows); n > 0 {
+			m.tbl.SetCursor(n - 1)
+		}
+	}
+	// Keep current selection visible on refresh
+	m.ensureCursorVisible()
 }
 
 func (m *Model) deriveColumns() []string {
-	// Use only the schema-defined order to reflect the log schema
-	cols := m.schema.ColumnOrder()
-	if len(cols) == 0 {
-		cols = []string{"ts", "level", "source", "msg", "message"}
+	// Primary: discovered columns in order of first appearance across logs
+	if len(m.discovered) > 0 {
+		return m.discovered
 	}
-	return cols
+	// Secondary: schema-defined order if present
+	cols := m.schema.ColumnOrder()
+	if len(cols) > 0 {
+		return cols
+	}
+	// Fallback to a common minimal set
+	return []string{"ts", "level", "source", "msg", "message"}
 }
 
 func (m *Model) visibleColumns(all []string) []string {
@@ -1074,17 +1176,27 @@ func (m *Model) autofitMaxCols() {
 	if width <= 0 {
 		width = 120
 	} // default before first WindowSizeMsg
-	// Account for minimal padding and separators (~3 chars per column)
-	avail := width - 4
-	if avail < 20 {
-		avail = 20
-	}
+	padR := 1
+	markerW := 1
 	sum := 0
 	count := 0
+	// Track overhead while adding columns: right padding per column incl. marker and one-gutter per data col
+	overhead := markerW + padR // marker cell width and its right padding
 	for i := m.colOffset; i < len(all); i++ {
-		w := m.columnWidth(all[i]) + 3
-		if count == 0 || sum+w <= avail {
-			sum += w
+		c := all[i]
+		// Minimal width for this column (use unselected header width and type min plus any user adjustment)
+		minW := headerMinWidth(c, false)
+		if m.colWidthAdj != nil {
+			minW += m.colWidthAdj[c]
+			if minW < headerMinWidth(c, false) {
+				minW = headerMinWidth(c, false)
+			}
+		}
+		// If we add this column, overhead grows by one gutter and one right padding
+		need := sum + minW + overhead + padR + 1 // +1 gutter between columns
+		if need <= width {
+			sum += minW
+			overhead += padR + 1
 			count++
 		} else {
 			break
@@ -1266,14 +1378,60 @@ func anyToString(v any) string {
 	}
 }
 
+// updateDiscoveryFromEntry updates discovered column order using approximate
+// field appearance within the raw line. Returns true if any new column was added.
+func (m *Model) updateDiscoveryFromEntry(e model.LogEntry) bool {
+	if m.discoveredSet == nil {
+		m.discoveredSet = map[string]bool{}
+	}
+	changed := false
+	// Build sorted keys by first index in raw text
+	keys := make([]string, 0, len(e.Fields))
+	for k := range e.Fields {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		ai := strings.Index(e.Raw, keys[i])
+		aj := strings.Index(e.Raw, keys[j])
+		if ai == -1 && aj == -1 {
+			return keys[i] < keys[j]
+		}
+		if ai == -1 {
+			return false
+		}
+		if aj == -1 {
+			return true
+		}
+		return ai < aj
+	})
+	for _, k := range keys {
+		if !m.discoveredSet[k] {
+			m.discoveredSet[k] = true
+			m.discovered = append(m.discovered, k)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func (m *Model) applyColumns(cols []string) {
 	// Compute column widths to fit terminal (data columns only)
 	widths := m.computeWidths(cols)
 	// Prepend a compact marker column for valid/invalid indicator
 	cs := make([]table.Column, 0, len(cols)+1)
 	cs = append(cs, table.Column{Title: " ", Width: 1})
+	visStart := m.colOffset
 	for i, c := range cols {
-		cs = append(cs, table.Column{Title: c, Width: widths[i]})
+		title := " " + c + " "
+		abs := visStart + i
+		if abs == m.selColIdx {
+			// Replace padding spaces with guillemets to indicate selection
+			title = "«" + c + "»"
+		}
+		cs = append(cs, table.Column{Title: title, Width: widths[i]})
 	}
 	m.cols = cols
 	m.tbl.SetColumns(cs)
@@ -1295,12 +1453,22 @@ func (m *Model) computeWidths(cols []string) []int {
 		base[i] = w
 		sum += w
 	}
-	avail := m.termWidth
-	if avail <= 0 {
-		avail = 120
+	// Compute available width for data columns considering marker column, cell padding, and gutters
+	tableW := m.termWidth
+	if tableW <= 0 {
+		tableW = 120
 	}
-	sep := (len(cols) - 1) * 2 // approximate separators
-	extra := avail - (sum + sep)
+	padR := 1 // as configured in table styles
+	markerW := 1
+	gutters := len(cols) // spaces between marker->first and between data columns
+	// total padding across all columns includes marker column too
+	totalPad := (len(cols) + 1) * padR
+	// data columns must fit in the remaining space
+	avail := tableW - markerW - totalPad - gutters
+	if avail < 10 {
+		avail = 10
+	}
+	extra := avail - sum
 	if extra != 0 {
 		idx := len(cols) - 1
 		for i, c := range cols {
@@ -1315,7 +1483,118 @@ func (m *Model) computeWidths(cols []string) []int {
 			base[idx] += extra
 		}
 	}
+	// Apply user adjustments and enforce min widths
+	minW := func(c string) int {
+		switch c {
+		case "ts", "time", "timestamp":
+			return 16
+		case "level", "lvl", "severity":
+			return 4
+		case "msg", "message":
+			return 12
+		default:
+			return 6
+		}
+	}
+	for i, c := range cols {
+		if m.colWidthAdj != nil {
+			base[i] += m.colWidthAdj[c]
+		}
+		if base[i] < minW(c) {
+			base[i] = minW(c)
+		}
+		// Ensure header fits regardless of selection state
+		need := headerMinWidth(c, (m.colOffset+i) == m.selColIdx)
+		if base[i] < need {
+			base[i] = need
+		}
+	}
+	// If over/under available width, adjust widths to fit exactly
+	sum = 0
+	for _, w := range base {
+		sum += w
+	}
+	over := sum - avail
+	if over > 0 {
+		// Prefer shrinking message column
+		target := -1
+		for i, c := range cols {
+			if c == "msg" || c == "message" {
+				target = i
+				break
+			}
+		}
+		shrink := func(i int, need int) int {
+			if i < 0 || i >= len(base) {
+				return need
+			}
+			mw := headerMinWidth(cols[i], (m.colOffset+i) == m.selColIdx)
+			can := base[i] - mw
+			if can <= 0 {
+				return need
+			}
+			d := need
+			if d > can {
+				d = can
+			}
+			base[i] -= d
+			return need - d
+		}
+		over = shrink(target, over)
+		for i := range base {
+			if over <= 0 {
+				break
+			}
+			if i == target {
+				continue
+			}
+			over = shrink(i, over)
+		}
+	} else if over < 0 {
+		// Distribute extra space, prefer message column
+		need := -over
+		target := -1
+		for i, c := range cols {
+			if c == "msg" || c == "message" {
+				target = i
+				break
+			}
+		}
+		if target != -1 {
+			base[target] += need
+			need = 0
+		}
+		// If no message column, add to last column
+		if need > 0 {
+			base[len(base)-1] += need
+		}
+	}
 	return base
+}
+
+// headerMinWidth returns the minimum width to fully render the header text
+// including selection markers when selected.
+func headerMinWidth(name string, selected bool) int {
+	unsel := len([]rune(" " + name + " "))
+	if !selected {
+		return max(unsel, typeMin(name))
+	}
+	sel := len([]rune("«" + name + "»"))
+	return max(max(unsel, sel), typeMin(name))
+}
+
+// typeMin provides a minimal width by common field type/name.
+func typeMin(c string) int {
+	switch c {
+	case "ts", "time", "timestamp":
+		return 16
+	case "level", "lvl", "severity":
+		return 4
+	case "msg", "message":
+		return 12
+	default:
+		return 6
+	}
 }
 
 func (m *Model) renderStream() string {
@@ -1323,24 +1602,15 @@ func (m *Model) renderStream() string {
 	if m.netBusy {
 		busy = " " + m.spin.View()
 	}
-	// Build underline indicator for selected column under the header
-	// Insert it right after the header line of the table
+	// Table view (header already includes selection markers)
 	tv := m.tbl.View()
-	underline := m.renderUnderline()
-	// splice underline after the first newline in table view
-	hEnd := strings.IndexByte(tv, '\n')
-	if hEnd > -1 {
-		tv = tv[:hEnd+1] + underline + "\n" + tv[hEnd+1:]
-	} else {
-		tv = tv + "\n" + underline
+	// Build minimal hint/status trail: only help unless in filter/buffer mode
+	hint := "  [?]=help"
+	if m.inlineMode == inlineFilter {
+		hint += "  [enter]=apply [esc]=cancel"
+	} else if m.inlineMode == inlineBuffer {
+		hint += "  [enter]=apply [esc]=cancel"
 	}
-    // Build minimal hint/status trail: only help unless in filter/buffer mode
-    hint := "  [?]=help"
-    if m.inlineMode == inlineFilter {
-        hint += "  [enter]=apply [esc]=cancel"
-    } else if m.inlineMode == inlineBuffer {
-        hint += "  [enter]=apply [esc]=cancel"
-    }
 	// Current cursor position among filtered rows
 	cur := m.tbl.Cursor()
 	if cur < 0 {
@@ -1360,8 +1630,8 @@ func (m *Model) renderStream() string {
 		map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
 		curDisp, total,
 		len(m.filtered), m.total, m.dropped, m.invalidCount, m.schema.FormatName, m.follow, m.source, hint, m.lastMsg, busy)
-    // Inline input line above status bar (or active filter summary)
-    var bottom string
+	// Inline input line above status bar (or active filter summary)
+	var bottom string
 	if m.inlineMode == inlineSearch {
 		// Show current term and shortcuts; stays until esc (vim-like)
 		term := m.search.Value()
@@ -1375,37 +1645,37 @@ func (m *Model) renderStream() string {
 			}
 			bottom = fmt.Sprintf("search: %s    [enter]=edit [esc]=quit mode [n/N]=next/prev", disp)
 		}
-    } else if m.inlineMode == inlineFilter {
-        // Show the column captured at filter-open time
-        field := m.criteria.Field
-        if field == "" {
-            // Fallback to currently selected column if somehow unset
-            all := m.deriveColumns()
-            if len(all) > 0 {
-                if m.selColIdx >= len(all) {
-                    m.selColIdx = len(all) - 1
-                }
-                field = all[m.selColIdx]
-            } else {
-                field = m.currentColumn()
-            }
-        }
-        bottom = fmt.Sprintf("Filter %s: %s    [enter]=apply [esc]=cancel [F]=clear filter", field, m.search.View())
-    } else if m.inlineMode == inlineBuffer {
-        bottom = fmt.Sprintf("Max buffer (lines): %s    [enter]=apply [esc]=cancel", m.search.View())
-    } else if m.criteria.Query != "" || m.criteria.Field != "" {
-        // Show active filter summary when a filter is applied
-        field := m.criteria.Field
-        q := m.criteria.Query
-        if m.criteria.UseRegex && q != "" {
-            q = "/" + q + "/"
-        }
-        if field != "" && q != "" {
-            bottom = fmt.Sprintf("Filter %s: %s    [F]=clear filter", field, q)
-        } else if q != "" { // fallback
-            bottom = fmt.Sprintf("Filter: %s    [F]=clear filter", q)
-        }
-    }
+	} else if m.inlineMode == inlineFilter {
+		// Show the column captured at filter-open time
+		field := m.criteria.Field
+		if field == "" {
+			// Fallback to currently selected column if somehow unset
+			all := m.deriveColumns()
+			if len(all) > 0 {
+				if m.selColIdx >= len(all) {
+					m.selColIdx = len(all) - 1
+				}
+				field = all[m.selColIdx]
+			} else {
+				field = m.currentColumn()
+			}
+		}
+		bottom = fmt.Sprintf("Filter %s: %s    [enter]=apply [esc]=cancel [F]=clear filter", field, m.search.View())
+	} else if m.inlineMode == inlineBuffer {
+		bottom = fmt.Sprintf("Max buffer (lines): %s    [enter]=apply [esc]=cancel", m.search.View())
+	} else if m.criteria.Query != "" || m.criteria.Field != "" {
+		// Show active filter summary when a filter is applied
+		field := m.criteria.Field
+		q := m.criteria.Query
+		if m.criteria.UseRegex && q != "" {
+			q = "/" + q + "/"
+		}
+		if field != "" && q != "" {
+			bottom = fmt.Sprintf("Filter %s: %s    [F]=clear filter", field, q)
+		} else if q != "" { // fallback
+			bottom = fmt.Sprintf("Filter: %s    [F]=clear filter", q)
+		}
+	}
 	// Always render a sub status bar to keep layout stable
 	if bottom == "" {
 		// minimal spacer line
@@ -1416,55 +1686,6 @@ func (m *Model) renderStream() string {
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, tv, bottom, m.styles.Status.Render(status))
-}
-
-// renderUnderline renders a visual underline under the selected column header.
-func (m *Model) renderUnderline() string {
-	cols := m.cols
-	if len(cols) == 0 {
-		cols = m.visibleColumns(m.deriveColumns())
-	}
-	if len(cols) == 0 {
-		return ""
-	}
-	widths := m.computeWidths(cols)
-	// Determine selected index within visible window
-	visStart := m.colOffset
-	visEnd := m.colOffset + len(cols)
-	if m.selColIdx < visStart || m.selColIdx >= visEnd {
-		// selected column not visible
-		if m.termWidth <= 0 {
-			return ""
-		}
-		return strings.Repeat(" ", m.termWidth)
-	}
-	sel := m.selColIdx - visStart
-	// Compute left padding: sum of widths (includes 1-space separators)
-	// Add marker column width offset (1)
-	left := 1
-	for i := 0; i < sel; i++ {
-		left += widths[i]
-	}
-	padLeft := strings.Repeat(" ", left)
-	bar := strings.Repeat("\u2500", widths[sel]) // ─
-	// Right padding to fill line
-	total := 0
-	for i := 0; i < len(widths); i++ {
-		total += widths[i]
-	}
-	rightSpaces := 0
-	if m.termWidth > total {
-		rightSpaces = m.termWidth - (left + widths[sel])
-		if rightSpaces < 0 {
-			rightSpaces = 0
-		}
-	} else {
-		rightSpaces = total - (left + widths[sel])
-		if rightSpaces < 0 {
-			rightSpaces = 0
-		}
-	}
-	return padLeft + bar + strings.Repeat(" ", rightSpaces)
 }
 
 func (m *Model) renderFilters() string {
@@ -1479,7 +1700,7 @@ func (m *Model) renderInspector() string {
 	idx := m.tbl.Cursor()
 	if idx >= 0 && idx < len(m.filtered) {
 		e := m.filtered[idx]
-		m.viewport.SetContent(e.PrettyJSON())
+		m.viewport.SetContent(colorizeJSONRoot(e.Fields, m.styles))
 	} else {
 		m.viewport.SetContent("Select a log in the table")
 	}
@@ -1487,62 +1708,62 @@ func (m *Model) renderInspector() string {
 }
 
 func (m *Model) renderHelp() string {
-    // Build an organized, navigable help menu
-    if len(m.helpItems) == 0 {
-        m.helpItems = m.buildHelpItems()
-    }
-    // Ensure selection is in range
-    if m.helpSel < 0 {
-        m.helpSel = 0
-    }
-    if m.helpSel >= len(m.helpItems) {
-        m.helpSel = len(m.helpItems) - 1
-    }
-    lines := []string{"Shortcuts:"}
-    currentGroup := ""
-    lineIndexOfSel := 0
-    for i, it := range m.helpItems {
-        if it.group != currentGroup {
-            currentGroup = it.group
-            lines = append(lines, "")
-            lines = append(lines, currentGroup+":")
-        }
-        prefix := "  "
-        if i == m.helpSel {
-            prefix = "> "
-            lineIndexOfSel = len(lines)
-        }
-        key := keyLabel(it.key)
-        lines = append(lines, fmt.Sprintf("%s[%s] %s", prefix, key, it.text))
-    }
-    // Adjust viewport to keep selection visible
-    if m.modalVP.Height > 0 {
-        top := m.modalVP.YOffset
-        bottom := top + m.modalVP.Height - 1
-        if lineIndexOfSel <= top {
-            if lineIndexOfSel-1 >= 0 {
-                m.modalVP.YOffset = lineIndexOfSel - 1
-            } else {
-                m.modalVP.YOffset = 0
-            }
-        } else if lineIndexOfSel >= bottom {
-            m.modalVP.YOffset = lineIndexOfSel - m.modalVP.Height + 2
-            if m.modalVP.YOffset < 0 {
-                m.modalVP.YOffset = 0
-            }
-        }
-    }
-    return m.styles.Help.Render(strings.Join(lines, "\n"))
+	// Build an organized, navigable help menu
+	if len(m.helpItems) == 0 {
+		m.helpItems = m.buildHelpItems()
+	}
+	// Ensure selection is in range
+	if m.helpSel < 0 {
+		m.helpSel = 0
+	}
+	if m.helpSel >= len(m.helpItems) {
+		m.helpSel = len(m.helpItems) - 1
+	}
+	lines := []string{"Shortcuts:"}
+	currentGroup := ""
+	lineIndexOfSel := 0
+	for i, it := range m.helpItems {
+		if it.group != currentGroup {
+			currentGroup = it.group
+			lines = append(lines, "")
+			lines = append(lines, currentGroup+":")
+		}
+		prefix := "  "
+		if i == m.helpSel {
+			prefix = "> "
+			lineIndexOfSel = len(lines)
+		}
+		key := keyLabel(it.key)
+		lines = append(lines, fmt.Sprintf("%s[%s] %s", prefix, key, it.text))
+	}
+	// Adjust viewport to keep selection visible
+	if m.modalVP.Height > 0 {
+		top := m.modalVP.YOffset
+		bottom := top + m.modalVP.Height - 1
+		if lineIndexOfSel <= top {
+			if lineIndexOfSel-1 >= 0 {
+				m.modalVP.YOffset = lineIndexOfSel - 1
+			} else {
+				m.modalVP.YOffset = 0
+			}
+		} else if lineIndexOfSel >= bottom {
+			m.modalVP.YOffset = lineIndexOfSel - m.modalVP.Height + 2
+			if m.modalVP.YOffset < 0 {
+				m.modalVP.YOffset = 0
+			}
+		}
+	}
+	return m.styles.Help.Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) openHelpModal() {
-    m.modalActive = true
-    m.modalKind = modalHelp
-    m.modalTitle = "Help"
-    m.helpItems = m.buildHelpItems()
-    m.helpSel = 0
-    m.modalBody = m.renderHelp()
-    m.resizeModal()
+	m.modalActive = true
+	m.modalKind = modalHelp
+	m.modalTitle = "Help"
+	m.helpItems = m.buildHelpItems()
+	m.helpSel = 0
+	m.modalBody = m.renderHelp()
+	m.resizeModal()
 }
 
 func (m *Model) openStatsModal() {
@@ -1559,7 +1780,7 @@ func (m *Model) openInspectorModal() {
 		m.modalActive = true
 		m.modalKind = modalInspector
 		m.modalTitle = "Entry"
-		m.modalBody = m.filtered[idx].PrettyJSON()
+		m.modalBody = colorizeJSONRoot(m.filtered[idx].Fields, m.styles)
 		m.resizeModal()
 	}
 }
@@ -1610,22 +1831,22 @@ func (m *Model) resizeModal() {
 }
 
 func (m *Model) renderModal() string {
-    // Build content
-    content := ""
-    switch m.modalKind {
-    case modalHelp:
-        // Update content dynamically for help menu
-        m.modalVP.SetContent(m.renderHelp())
-        content = m.modalVP.View() + "\n[esc]=close  [enter]=run"
-    case modalSearch:
-        content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
-    case modalFilter:
-        content = m.search.View() + "\n[enter]=apply  [esc]=close"
-    case modalInspector, modalStats, modalRaw, modalLogs:
-        content = m.modalVP.View() + "\n[esc/enter]=close  [C]=copy"
-    default:
-        content = m.modalVP.View() + "\n[esc/enter]=close"
-    }
+	// Build content
+	content := ""
+	switch m.modalKind {
+	case modalHelp:
+		// Update content dynamically for help menu
+		m.modalVP.SetContent(m.renderHelp())
+		content = m.modalVP.View() + "\n[esc]=close  [enter]=run"
+	case modalSearch:
+		content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
+	case modalFilter:
+		content = m.search.View() + "\n[enter]=apply  [esc]=close"
+	case modalInspector, modalStats, modalRaw, modalLogs:
+		content = m.modalVP.View() + "\n[esc/enter]=close  [C]=copy"
+	default:
+		content = m.modalVP.View() + "\n[esc/enter]=close"
+	}
 	boxW := m.termWidth - 6
 	if boxW < 20 {
 		boxW = 20
