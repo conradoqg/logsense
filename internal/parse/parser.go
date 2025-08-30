@@ -115,38 +115,64 @@ func NewRegexParser(s model.Schema, forced string) (Parser, error) {
 }
 
 func (p *RegexParser) Parse(line, source string) model.LogEntry {
-	e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
-	if p.re == nil {
-		e.Fields["msg"] = line
-		return e
-	}
-	m := p.re.FindStringSubmatch(line)
-	if m == nil {
-		e.Fields["msg"] = line
-		return e
-	}
-	names := p.re.SubexpNames()
-	for i, name := range names {
-		if i == 0 || name == "" {
-			continue
-		}
-		val := m[i]
-		e.Fields[name] = val
-		if name == "ts" || name == "time" || name == "timestamp" {
-			if t, err := time.Parse(p.layout, val); err == nil {
-				e.Timestamp = &t
-			}
-		}
-		if name == "level" || name == "lvl" || name == "severity" {
-			e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
-		}
-		if name == "status" {
-			if n, err := strconv.Atoi(val); err == nil {
-				e.Fields[name] = n
-			}
-		}
-	}
-	return e
+    e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
+    if p.re == nil {
+        e.Fields["msg"] = line
+        return e
+    }
+    m := p.re.FindStringSubmatch(line)
+    if m == nil {
+        e.Fields["msg"] = line
+        return e
+    }
+    names := p.re.SubexpNames()
+    captured := 0
+    for i, name := range names {
+        if i == 0 || name == "" {
+            continue
+        }
+        val := m[i]
+        e.Fields[name] = val
+        captured++
+        if name == "ts" || name == "time" || name == "timestamp" {
+            if t, err := time.Parse(p.layout, val); err == nil {
+                e.Timestamp = &t
+            }
+        }
+        if name == "level" || name == "lvl" || name == "severity" {
+            e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
+        }
+        if name == "status" {
+            if n, err := strconv.Atoi(val); err == nil {
+                e.Fields[name] = n
+            }
+        }
+    }
+    // Fallback: if regex has no named groups, map captures to schema field order
+    if captured == 0 {
+        fields := p.schema.Fields
+        if len(fields) == len(m)-1 { // ignore whole-match at index 0
+            for i := 1; i < len(m); i++ {
+                name := fields[i-1].Name
+                val := m[i]
+                e.Fields[name] = val
+                if name == "ts" || name == "time" || name == "timestamp" {
+                    if t, err := time.Parse(p.layout, val); err == nil {
+                        e.Timestamp = &t
+                    }
+                }
+                if name == "level" || name == "lvl" || name == "severity" {
+                    e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
+                }
+                if name == "status" {
+                    if n, err := strconv.Atoi(val); err == nil {
+                        e.Fields[name] = n
+                    }
+                }
+            }
+        }
+    }
+    return e
 }
 
 // logfmt parser (very basic, supports quoted values)

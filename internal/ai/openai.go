@@ -1,11 +1,12 @@
 package ai
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "strings"
+    "time"
 
 	altai "github.com/sashabaranov/go-openai"
 
@@ -39,19 +40,37 @@ type aiResponse struct {
 }
 
 func (c *OpenAIClient) InferSchema(ctx context.Context, lines []string) (model.Schema, error) {
-	if c == nil || c.apiKey == "" {
-		return model.Schema{}, errors.New("openai disabled")
-	}
-	prompt := buildSchemaPrompt(lines)
-	ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-	var out aiResponse
-	if resp, err := c.callAlt(ctx2, prompt); err == nil {
-		if err := json.Unmarshal([]byte(resp), &out); err == nil {
-			return toSchema(out), nil
-		}
-	}
-	return model.Schema{}, errors.New("failed to infer schema")
+    if c == nil || c.apiKey == "" {
+        return model.Schema{}, errors.New("openai disabled")
+    }
+    prompt := buildSchemaPrompt(lines)
+    ctx2, cancel := context.WithTimeout(ctx, c.timeout)
+    defer cancel()
+    var out aiResponse
+    resp, err := c.callAlt(ctx2, prompt)
+    if err != nil {
+        return model.Schema{}, err
+    }
+    // Try direct unmarshal
+    if uerr := json.Unmarshal([]byte(resp), &out); uerr == nil {
+        return toSchema(out), nil
+    } else {
+        // Try to extract JSON substring (in case of stray prose or code fences)
+        start := strings.Index(resp, "{")
+        end := strings.LastIndex(resp, "}")
+        if start >= 0 && end > start {
+            body := resp[start : end+1]
+            if uerr2 := json.Unmarshal([]byte(body), &out); uerr2 == nil {
+                return toSchema(out), nil
+            }
+        }
+        // Surface parsing error and a snippet for debugging
+        snippet := resp
+        if len(snippet) > 200 {
+            snippet = snippet[:200]
+        }
+        return model.Schema{}, fmt.Errorf("invalid JSON from OpenAI: %v; content: %s", uerr, snippet)
+    }
 }
 
 func (c *OpenAIClient) callAlt(ctx context.Context, prompt string) (string, error) {
@@ -85,8 +104,9 @@ func buildSchemaPrompt(lines []string) string {
 		max = len(lines)
 	}
 	var b strings.Builder
-	b.WriteString("Analyze the log lines below and return ONLY strict JSON matching this contract: ")
-	b.WriteString("{formatName, probableSources, parseStrategy, timeLayout, levelMapping, schema:{fields:[{name,type,description,pathOrGroup}]}, regexPattern, confidence, sampleParsedRow}.\n")
+    b.WriteString("Analyze the log lines below and return ONLY strict JSON matching this contract: ")
+    b.WriteString("{formatName, probableSources, parseStrategy, timeLayout, levelMapping, schema:{fields:[{name,type,description,pathOrGroup}]}, regexPattern, confidence, sampleParsedRow}.\n")
+    b.WriteString("For each field, include a concise human-friendly description of its meaning in 'description'.\n")
 	b.WriteString("Lines:\n")
 	for i := 0; i < max; i++ {
 		b.WriteString(lines[i])

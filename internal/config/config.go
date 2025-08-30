@@ -1,10 +1,11 @@
 package config
 
 import (
-	"errors"
-	"flag"
-	"fmt"
-	"os"
+    "errors"
+    "flag"
+    "fmt"
+    "os"
+    "strconv"
 )
 
 type Theme string
@@ -15,19 +16,21 @@ const (
 )
 
 type Config struct {
-	FilePath     string
-	UseStdin     bool
-	Follow       bool
-	MaxBuffer    int
-	BlockSizeMB  int
-	Theme        Theme
-	Offline      bool
-	OpenAIModel  string
-	OpenAIBase   string
-	TimeLayout   string
-	ForceFormat  string
-	ExportFormat string
-	ExportOut    string
+    FilePath     string
+    UseStdin     bool
+    Follow       bool
+    MaxBuffer    int
+    BlockSizeMB  int
+    Theme        Theme
+    Offline      bool
+    NoCache      bool
+    OpenAIModel  string
+    OpenAIBase   string
+    OpenAITimeoutSec int
+    TimeLayout   string
+    ForceFormat  string
+    ExportFormat string
+    ExportOut    string
 
 	// Internal
 	IsPipedStdin bool
@@ -49,10 +52,12 @@ func Load() (*Config, error) {
 	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 200000, "ring buffer size (min 50000)")
 	fs.IntVar(&cfg.BlockSizeMB, "block-size-mb", 0, "when reading a file (no follow), read only the last N MB instead of the whole file (0=all)")
 	theme := string(ThemeDark)
-	fs.StringVar(&theme, "theme", string(ThemeDark), "theme: dark|light")
-	fs.BoolVar(&cfg.Offline, "offline", false, "disable OpenAI and work offline only")
-	fs.StringVar(&cfg.OpenAIModel, "openai-model", getenvDefault("LOGSENSE_OPENAI_MODEL", "gpt-4o-mini"), "OpenAI model override")
-	fs.StringVar(&cfg.OpenAIBase, "openai-base-url", getenvDefault("LOGSENSE_OPENAI_BASE_URL", ""), "OpenAI base URL override")
+    fs.StringVar(&theme, "theme", string(ThemeDark), "theme: dark|light")
+    fs.BoolVar(&cfg.Offline, "offline", false, "disable OpenAI and work offline only")
+    fs.BoolVar(&cfg.NoCache, "no-cache", false, "disable schema cache (skip read/write)")
+    fs.StringVar(&cfg.OpenAIModel, "openai-model", getenvDefault("LOGSENSE_OPENAI_MODEL", "gpt-4o-mini"), "OpenAI model override")
+    fs.StringVar(&cfg.OpenAIBase, "openai-base-url", getenvDefault("LOGSENSE_OPENAI_BASE_URL", ""), "OpenAI base URL override")
+    fs.IntVar(&cfg.OpenAITimeoutSec, "openai-timeout-sec", getenvDefaultInt("LOGSENSE_OPENAI_TIMEOUT_SEC", 25), "OpenAI request timeout in seconds")
 	fs.StringVar(&cfg.TimeLayout, "time-layout", "", "force time layout (Go format)")
 	fs.StringVar(&cfg.ForceFormat, "format", "", "force format: json|regex|logfmt|apache|syslog")
 	fs.StringVar(&cfg.ExportFormat, "export", "", "export filtered view: csv|json")
@@ -84,10 +89,19 @@ func Load() (*Config, error) {
 }
 
 func getenvDefault(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return d
+    if v := os.Getenv(k); v != "" {
+        return v
+    }
+    return d
+}
+
+func getenvDefaultInt(k string, d int) int {
+    if v := os.Getenv(k); v != "" {
+        if n, err := strconv.Atoi(v); err == nil {
+            return n
+        }
+    }
+    return d
 }
 
 func (c *Config) OpenAIKey() string { return os.Getenv("OPENAI_API_KEY") }
