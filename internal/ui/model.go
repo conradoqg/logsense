@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"logsense/internal/ai"
 	"logsense/internal/config"
 	"logsense/internal/detect"
 	"logsense/internal/export"
@@ -411,7 +412,7 @@ func (m *Model) triggerRedetect() tea.Cmd {
 	g := detect.Heuristics(lines[:min(10, len(lines))])
 	// If heuristics not confident and online, try OpenAI
 	if !m.cfg.Offline && m.cfg.OpenAIKey() != "" && (g.Schema.FormatName == "unknown" || g.Confidence < 0.5) {
-		client := detect.NewOpenAIClient(m.cfg.OpenAIKey(), m.cfg.OpenAIBase, m.cfg.OpenAIModel, 20*time.Second)
+		client := ai.NewOpenAIClient(m.cfg.OpenAIKey(), m.cfg.OpenAIBase, m.cfg.OpenAIModel, 20*time.Second)
 		return tea.Batch(
 			func() tea.Msg { return openaiStartMsg{} },
 			func() tea.Msg {

@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"sort"
 	"sync"
 	"time"
@@ -132,8 +131,3 @@ func (r *Ring) Resize(newCap int) {
 }
 
 // Removed ClearVisible: clearing the buffer is no longer supported via UI.
-
-func (e LogEntry) PrettyJSON() string {
-	b, _ := json.MarshalIndent(e.Fields, "", "  ")
-	return string(b)
-}

@@ -74,11 +74,3 @@ func Dump() string {
 	defer mu.Unlock()
 	return strings.Join(buf, "\n")
 }
-
-func Lines() []string {
-	mu.Lock()
-	defer mu.Unlock()
-	out := make([]string, len(buf))
-	copy(out, buf)
-	return out
-}
