@@ -86,10 +86,42 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
             if m.modalActive {
                 // Modal key handling
+                if m.modalKind == modalStatsTime {
+                    // ESC returns to stats list; Enter falls through to close
+                    if msg.Type == tea.KeyEsc {
+                        m.modalKind = modalStats
+                        m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
+                        m.buildAndRenderStats()
+                        m.modalVP.SetContent(m.modalBody)
+                        return m, nil
+                    }
+                }
+                // Stats modal: navigate/select
+                if m.modalKind == modalStats {
+                    if msg.Type == tea.KeyUp {
+                        if m.statsSel > 0 {
+                            m.statsSel--
+                            m.buildAndRenderStats()
+                        }
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyDown {
+                        if m.statsSel+1 < len(m.statsItems) {
+                            m.statsSel++
+                            m.buildAndRenderStats()
+                        }
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyEnter {
+                        // Open time distribution sub-chart
+                        m.openStatsTrendModal()
+                        return m, nil
+                    }
+                }
                 if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
-				// If applying in search/filter
-				if msg.Type == tea.KeyEnter {
-					if m.modalKind == modalSearch {
+                    // If applying in search/filter
+                    if msg.Type == tea.KeyEnter {
+                        if m.modalKind == modalSearch {
 						q := strings.TrimSpace(m.search.Value())
 						if q != "" {
 							m.searchActive = true
@@ -142,7 +174,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-                if msg.Type == tea.KeyRunes && msg.String() == "c" && (m.modalKind == modalInspector || m.modalKind == modalStats || m.modalKind == modalRaw || m.modalKind == modalLogs || m.modalKind == modalExplain) {
+                if msg.Type == tea.KeyRunes && msg.String() == "c" && (m.modalKind == modalInspector || m.modalKind == modalStats || m.modalKind == modalStatsTime || m.modalKind == modalRaw || m.modalKind == modalLogs || m.modalKind == modalExplain) {
                     copyToClipboard(m.modalBody)
                     m.lastMsg = "copied to clipboard"
                     return m, nil

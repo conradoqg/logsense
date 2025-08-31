@@ -193,11 +193,12 @@ func (m *Model) openHelpModal() {
 }
 
 func (m *Model) openStatsModal() {
-	m.modalActive = true
-	m.modalKind = modalStats
-	m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
-	m.modalBody = buildStats(m.statsField, m.filtered)
-	m.resizeModal()
+    m.modalActive = true
+    m.modalKind = modalStats
+    m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
+    // Build items and render with fixed split for label/bars
+    m.buildAndRenderStats()
+    m.resizeModal()
 }
 
 func (m *Model) openInspectorModal() {
@@ -248,12 +249,20 @@ func (m *Model) resizeModal() {
 		h = 5
 	}
 	m.modalVP = viewport.New(w-4, h-4)
-	if m.modalKind == modalSearch {
-		// content will be dynamic; minimal body
-		m.modalVP.SetContent("")
-	} else {
-		m.modalVP.SetContent(m.modalBody)
-	}
+    if m.modalKind == modalSearch {
+        // content will be dynamic; minimal body
+        m.modalVP.SetContent("")
+    } else if m.modalKind == modalStats {
+        // Re-render stats to fit new size
+        m.buildAndRenderStats()
+        m.modalVP.SetContent(m.modalBody)
+    } else if m.modalKind == modalStatsTime {
+        // Re-render time distribution with new size
+        m.renderStatsTime()
+        m.modalVP.SetContent(m.modalBody)
+    } else {
+        m.modalVP.SetContent(m.modalBody)
+    }
 }
 
 func (m *Model) renderModal() string {
@@ -269,8 +278,12 @@ func (m *Model) renderModal() string {
 		content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
 	case modalFilter:
 		content = m.search.View() + "\n[enter]=apply  [esc]=close"
-    case modalInspector, modalStats, modalRaw, modalExplain:
+    case modalInspector, modalRaw, modalExplain:
         content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
+    case modalStats:
+        content = m.modalVP.View() + "\n[esc]=close  [enter]=open  [↑/↓]=navigate  [c]=copy"
+    case modalStatsTime:
+        content = m.modalVP.View() + "\n[esc]=back  [enter]=close  [c]=copy"
     case modalLogs:
         // Fixed status header above navigable application log viewport
         header := []string{
@@ -296,12 +309,63 @@ func (m *Model) renderModal() string {
 }
 
 func (m *Model) renderStats() string {
-	field := m.statsField
-	if field == "" {
-		field = m.currentColumn()
-	}
-	s := buildStats(field, m.filtered)
-	return m.styles.Help.Render(s)
+    field := m.statsField
+    if field == "" {
+        field = m.currentColumn()
+    }
+    // Keep legacy function available; no longer used for modal rendering
+    s := buildStats(field, m.filtered)
+    return m.styles.Help.Render(s)
+}
+
+// buildAndRenderStats computes stats items for the current field and renders
+// them into the modal body using a fixed 50/50 split for label and bars.
+func (m *Model) buildAndRenderStats() {
+    field := m.statsField
+    if field == "" {
+        field = m.currentColumn()
+        m.statsField = field
+    }
+    items := computeStatsItems(field, m.filtered)
+    m.statsItems = items
+    if m.statsSel >= len(items) {
+        m.statsSel = 0
+    }
+    // Render with current modal width
+    width := m.modalVP.Width
+    if width <= 0 {
+        width = max(40, m.termWidth-10)
+    }
+    m.modalBody = renderStatsList(items, width, m.statsSel)
+    m.modalVP.SetContent(m.modalBody)
+}
+
+// renderStatsTime rebuilds the time-distribution chart for the selected stats item.
+func (m *Model) renderStatsTime() {
+    width := m.modalVP.Width
+    height := m.modalVP.Height
+    if width < 20 {
+        width = 20
+    }
+    if height < 6 {
+        height = 6
+    }
+    content := buildTimeDistribution(m.statsField, m.statsItems, m.statsSel, m.filtered, width, height)
+    m.modalBody = content
+    m.modalVP.SetContent(content)
+}
+
+// openStatsTrendModal opens the time-distribution chart for current selection.
+func (m *Model) openStatsTrendModal() {
+    if m.statsSel < 0 || m.statsSel >= len(m.statsItems) {
+        return
+    }
+    it := m.statsItems[m.statsSel]
+    m.modalActive = true
+    m.modalKind = modalStatsTime
+    m.modalTitle = fmt.Sprintf("%s over time: %s", m.statsField, it.label)
+    m.renderStatsTime()
+    m.resizeModal()
 }
 
 func (m *Model) currentColumn() string {

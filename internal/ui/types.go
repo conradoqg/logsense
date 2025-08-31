@@ -40,6 +40,7 @@ const (
     modalNone modalKind = iota
     modalHelp
     modalStats
+    modalStatsTime
     modalInspector
     modalSearch
     modalFilter
@@ -119,8 +120,11 @@ type Model struct {
 	lastMsg      string
 	lastSearch   string
 	showHelp     bool
-	showStats    bool
-	statsField   string
+    showStats    bool
+    statsField   string
+    // Stats modal state
+    statsItems   []statItem
+    statsSel     int
 	netBusy      bool
 	failStreak   int
 	prevDropped  uint64
@@ -148,9 +152,24 @@ type Model struct {
 }
 
 type helpItem struct {
-	group string
-	text  string
-	key   tea.Key
+    group string
+    text  string
+    key   tea.Key
+}
+
+// statItem represents one row in the stats list. It can be either a
+// categorical value or a numeric bin range.
+type statItem struct {
+    label    string
+    count    int
+    // Categorical selection
+    svalue   string
+    // Numeric selection
+    hasRange bool
+    low      float64
+    high     float64
+    hasExact bool
+    fvalue   float64
 }
 
 func keyCmd(k tea.Key) tea.Cmd {
