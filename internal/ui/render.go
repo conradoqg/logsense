@@ -9,13 +9,15 @@ import (
 )
 
 func (m *Model) View() string {
-	switch m.tab {
-	case tabStream:
-		v := m.renderStream()
-		if m.modalActive {
-			v = overlay(v, m.renderModal())
-		}
-		return v
+    switch m.tab {
+    case tabStream:
+        v := m.renderStream()
+        if m.modalActive {
+            // Dim the background content while keeping it visible
+            dimmed := lipgloss.NewStyle().Faint(true).Render(v)
+            v = overlay(dimmed, m.renderModal())
+        }
+        return v
 	case tabFilters:
 		return m.renderFilters()
 	case tabInspector:
@@ -255,8 +257,8 @@ func (m *Model) resizeModal() {
 }
 
 func (m *Model) renderModal() string {
-	// Build content
-	content := ""
+    // Build content
+    content := ""
 	switch m.modalKind {
 	case modalHelp:
 		// Update content dynamically for help menu
@@ -282,17 +284,15 @@ func (m *Model) renderModal() string {
 	default:
 		content = m.modalVP.View() + "\n[esc/enter]=close"
 	}
-	boxW := m.termWidth - 6
-	if boxW < 20 {
-		boxW = 20
-	}
-	title := m.styles.PopupTitle.Render(m.modalTitle)
-	body := m.styles.PopupBox.Width(boxW).Render(title + "\n" + content)
-	// Dim background block
-	dim := lipgloss.NewStyle().Background(lipgloss.Color("236")).Width(m.termWidth).Height(m.termHeight).Render(" ")
-	centered := lipgloss.Place(m.termWidth, m.termHeight, lipgloss.Center, lipgloss.Center, body)
-	// Place centered box on dim background, then overlay over base
-	return overlay(dim, centered)
+    boxW := m.termWidth - 6
+    if boxW < 20 {
+        boxW = 20
+    }
+    title := m.styles.PopupTitle.Render(m.modalTitle)
+    body := m.styles.PopupBox.Width(boxW).Render(title + "\n" + content)
+    // Center the modal box; do not cover entire background to keep it dimmed not dark
+    centered := lipgloss.Place(m.termWidth, m.termHeight, lipgloss.Center, lipgloss.Center, body)
+    return centered
 }
 
 func (m *Model) renderStats() string {

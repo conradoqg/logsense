@@ -29,13 +29,14 @@ func overlay(base, overlay string) string {
 		oLines = append(oLines, "")
 	}
 	out := make([]string, maxLen)
-	for i := 0; i < maxLen; i++ {
-		if len(oLines[i]) > 0 {
-			out[i] = oLines[i]
-		} else {
-			out[i] = bLines[i]
-		}
-	}
+    for i := 0; i < maxLen; i++ {
+        // Treat whitespace-only overlay lines as transparent
+        if strings.TrimSpace(oLines[i]) != "" {
+            out[i] = oLines[i]
+        } else {
+            out[i] = bLines[i]
+        }
+    }
 	return strings.Join(out, "\n")
 }
 
