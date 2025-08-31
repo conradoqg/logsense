@@ -143,14 +143,7 @@ func (m *Model) renderHelp() string {
 	if m.helpSel >= len(m.helpItems) {
 		m.helpSel = len(m.helpItems) - 1
 	}
-	// Status details (moved from main status bar)
-	lines := []string{"Status:",
-		fmt.Sprintf("format: %s (%s)", m.schema.FormatName, m.schema.ParseStrategy),
-		fmt.Sprintf("rows: %d  ingested: %d  overflow: %d  invalid: %d", len(m.filtered), m.total, m.dropped, m.invalidCount),
-		fmt.Sprintf("source: %s  follow: %v", m.source, m.follow),
-		"",
-		"Shortcuts:",
-	}
+    lines := []string{"Shortcuts:"}
 	currentGroup := ""
 	lineIndexOfSel := 0
 	for i, it := range m.helpItems {
@@ -274,8 +267,18 @@ func (m *Model) renderModal() string {
 		content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
 	case modalFilter:
 		content = m.search.View() + "\n[enter]=apply  [esc]=close"
-	case modalInspector, modalStats, modalRaw, modalLogs, modalExplain:
-		content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
+    case modalInspector, modalStats, modalRaw, modalExplain:
+        content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
+    case modalLogs:
+        // Fixed status header above navigable application log viewport
+        header := []string{
+            "Status:",
+            fmt.Sprintf("format: %s (%s)", m.schema.FormatName, m.schema.ParseStrategy),
+            fmt.Sprintf("rows: %d  ingested: %d  overflow: %d  invalid: %d", len(m.filtered), m.total, m.dropped, m.invalidCount),
+            fmt.Sprintf("source: %s  follow: %v", m.source, m.follow),
+        }
+        h := m.styles.Help.Render(strings.Join(header, "\n"))
+        content = h + "\n" + m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
 	default:
 		content = m.modalVP.View() + "\n[esc/enter]=close"
 	}
