@@ -1,6 +1,15 @@
 # logsense
 
-Fast, pleasant log TUI built with Bubble Tea, Bubbles and Lipgloss. It reads logs from files (with follow/tail) and/or stdin, detects format, parses into a structured table with filters, search, and inspector. Optional OpenAI integration can help re-detect schemas on demand (r) and explain log entries.
+Logsense is a fast, keyboard-driven log viewer for the terminal. It auto-detects log formats, streams data from files or stdin, and renders a structured, filterable table so you can spot issues quickly without leaving the shell. Built with Bubble Tea, Bubbles, and Lipgloss.
+
+Highlights:
+
+- Auto-detects formats: JSON Lines, logfmt, Apache Combined, RFC5424 syslog (with sensible fallback).
+- Streaming by default: follows files like tail -f and can read only the last N MB for quick scans.
+- Powerful TUI: instant search (plain or regex), column stats, inspector, copy line, pause/resume, toggle follow.
+- Structured export: write filtered results to CSV or JSON.
+- Works anywhere: read from a path or pipe from any command.
+- Optional AI assist: use OpenAI to improve schema detection and explain records (can be fully disabled with --offline).
 
 ## Installation
 
@@ -25,10 +34,10 @@ make build
 cat testdata/json_lines.ndjson | logsense
 ```
 
-- Read a file with follow:
+- Read a file (follow is default):
 
 ```
-logsense --file=/var/log/app.log --follow
+logsense --file=/var/log/app.log
 ```
 
 - Demo mode (no input):
@@ -40,7 +49,7 @@ logsense
 ## Key Flags
 
 - `--file=PATH`: log file path
-- `--follow`: follow (tail -f)
+- `--no-follow`: disable follow (tail -f off)
 - `--stdin`: force stdin (auto-detected when piped)
 - `--max-buffer=50000`: ring buffer size
 - `--block-size-mb=16`: when reading a file without `--follow`, only load the last N MB (0 = whole file)
@@ -69,7 +78,7 @@ docker run --rm -it \
   -v /var/log:/var/log:ro \
   --env OPENAI_API_KEY \
   ghcr.io/<owner>/<repo>:latest \
-  --file /var/log/syslog --follow
+  --file /var/log/syslog
 ```
 
 Pipe stdin:

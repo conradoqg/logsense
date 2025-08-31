@@ -51,7 +51,6 @@ func Load() (*Config, error) {
 	fs.SetOutput(os.Stderr)
 
     fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
-    fs.BoolVar(&cfg.Follow, "follow", true, "follow file (tail -f)")
     fs.BoolVar(&cfg.NoFollow, "no-follow", false, "do not follow (tail -f off)")
 	fs.BoolVar(&cfg.UseStdin, "stdin", false, "read from stdin (default: auto if piped)")
 	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 200000, "ring buffer size (min 50000)")
