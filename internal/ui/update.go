@@ -674,6 +674,7 @@ case explainDoneMsg:
 	case tickMsg:
 		// Pull lines non-blocking, parse, push to ring
 		if m.state == stateRunning {
+			added := 0
 			for i := 0; i < 500; i++ { // limit per tick
 				select {
 				case l, ok := <-m.lines:
@@ -687,9 +688,26 @@ case explainDoneMsg:
 							m.columnsDirty = true
 						}
 						m.rowsDirty = true
+						added++
 					}
 				default:
 					i = 999999 // break outer
+				}
+			}
+			// Update smoothed entry rate (lines/sec)
+			now := time.Now()
+			if m.rateLast.IsZero() {
+				m.rateLast = now
+			} else {
+				dt := now.Sub(m.rateLast).Seconds()
+				if dt > 0 {
+					inst := float64(added) / dt
+					if m.rateEWMA == 0 {
+						m.rateEWMA = inst
+					} else {
+						m.rateEWMA = 0.85*m.rateEWMA + 0.15*inst
+					}
+					m.rateLast = now
 				}
 			}
 		}

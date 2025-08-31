@@ -52,9 +52,16 @@ func (m *Model) renderStream() string {
 		curDisp = cur + 1
 	}
     // Compact status: only running state, follow state, current line/total
-    status := fmt.Sprintf("[%s] | line:%d/%d follow:%v | %s | %s",
+    rate := m.rateEWMA
+    // Display rate with 1 decimal if meaningful
+    rateStr := "0/s"
+    if rate >= 0.05 { // avoid noise
+        rateStr = fmt.Sprintf("%.1f/s", rate)
+    }
+    status := fmt.Sprintf("[%s] | line:%d/%d rate:%s follow:%v | %s | %s",
         map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
         curDisp, total,
+        rateStr,
         m.follow, hint, m.lastMsg)
 	// Inline input line above status bar (or active filter summary)
 	var bottom string

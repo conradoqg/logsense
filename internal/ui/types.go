@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"context"
-	"strings"
+    "context"
+    "strings"
+    "time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -127,8 +128,12 @@ type Model struct {
     statsSel     int
 	netBusy      bool
 	failStreak   int
-	prevDropped  uint64
-	invalidCount int
+    prevDropped  uint64
+    invalidCount int
+
+    // Entry rate (lines/sec), EWMA-smoothed
+    rateEWMA float64
+    rateLast time.Time
 
 	// Modal popup
 	modalActive bool

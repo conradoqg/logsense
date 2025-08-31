@@ -15,12 +15,13 @@ import (
 
 func (m *Model) refreshFiltered() {
 	// Remember if the cursor was at the bottom before refresh
-	wasAtBottom := false
-	if prev := len(m.tbl.Rows()); prev > 0 {
-		if c := m.tbl.Cursor(); c >= prev-1 {
-			wasAtBottom = true
-		}
-	}
+    wasAtBottom := false
+    prev := len(m.tbl.Rows())
+    if prev > 0 {
+        if c := m.tbl.Cursor(); c >= prev-1 {
+            wasAtBottom = true
+        }
+    }
 	// Only apply field-scoped filter via m.criteria (set when applying filter)
 	if ev, err := filter.NewEvaluator(m.criteria); err == nil {
 		m.eval = ev
@@ -98,12 +99,19 @@ func (m *Model) refreshFiltered() {
     m.filtered = localFiltered
     m.applyColumns(cols)
 	m.tbl.SetRows(rows)
-	// If we were at the bottom prior to refresh, keep sticking to the latest row
-	if wasAtBottom {
-		if n := len(rows); n > 0 {
-			m.tbl.SetCursor(n - 1)
-		}
-	}
+    // If we were at the bottom prior to refresh, keep sticking to the latest row
+    if wasAtBottom {
+        if n := len(rows); n > 0 {
+            m.tbl.SetCursor(n - 1)
+            m.ensureCursorVisible()
+        }
+    } else if prev == 0 {
+        // First population: select last row by default for better visibility
+        if n := len(rows); n > 0 {
+            m.tbl.SetCursor(n - 1)
+            m.ensureCursorVisible()
+        }
+    }
 }
 
 // deriveColumns returns the preferred ordering of columns.
