@@ -326,9 +326,32 @@ func (m *Model) buildAndRenderStats() {
         field = m.currentColumn()
         m.statsField = field
     }
+    // Preserve current selection identity across recomputes
+    var prev statItem
+    hasPrev := false
+    if m.statsSel >= 0 && m.statsSel < len(m.statsItems) {
+        prev = m.statsItems[m.statsSel]
+        hasPrev = true
+    }
     items := computeStatsItems(field, m.filtered)
     m.statsItems = items
-    if m.statsSel >= len(items) {
+    if len(items) == 0 {
+        m.statsSel = 0
+    } else if hasPrev {
+        // Try to locate the previous selected item in the new list
+        idx := -1
+        for i, it := range items {
+            if prev.hasRange && it.hasRange {
+                if it.low == prev.low && it.high == prev.high { idx = i; break }
+            } else if prev.hasExact && it.hasExact {
+                if it.fvalue == prev.fvalue { idx = i; break }
+            } else if prev.svalue != "" && it.svalue != "" {
+                if it.svalue == prev.svalue { idx = i; break }
+            }
+        }
+        if idx >= 0 { m.statsSel = idx } else if m.statsSel >= len(items) { m.statsSel = len(items) - 1 }
+        if m.statsSel < 0 { m.statsSel = 0 }
+    } else if m.statsSel >= len(items) {
         m.statsSel = 0
     }
     // Render with current modal width
@@ -338,6 +361,24 @@ func (m *Model) buildAndRenderStats() {
     }
     m.modalBody = renderStatsList(items, width, m.statsSel)
     m.modalVP.SetContent(m.modalBody)
+    // Keep selected line visible in the stats viewport
+    if m.modalVP.Height > 0 {
+        top := m.modalVP.YOffset
+        bottom := top + m.modalVP.Height - 1
+        line := m.statsSel // one item per line, no header
+        if line <= top {
+            if line-1 >= 0 {
+                m.modalVP.YOffset = line - 1
+            } else {
+                m.modalVP.YOffset = 0
+            }
+        } else if line >= bottom {
+            m.modalVP.YOffset = line - m.modalVP.Height + 2
+            if m.modalVP.YOffset < 0 {
+                m.modalVP.YOffset = 0
+            }
+        }
+    }
 }
 
 // renderStatsTime rebuilds the time-distribution chart for the selected stats item.

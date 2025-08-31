@@ -112,6 +112,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         }
                         return m, nil
                     }
+                    if msg.Type == tea.KeyPgUp {
+                        if m.modalVP.Height <= 0 { return m, nil }
+                        step := m.modalVP.Height - 1
+                        if step < 1 { step = 1 }
+                        m.statsSel -= step
+                        if m.statsSel < 0 { m.statsSel = 0 }
+                        m.buildAndRenderStats()
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyPgDown {
+                        if m.modalVP.Height <= 0 { return m, nil }
+                        step := m.modalVP.Height - 1
+                        if step < 1 { step = 1 }
+                        m.statsSel += step
+                        if m.statsSel >= len(m.statsItems) { m.statsSel = len(m.statsItems) - 1 }
+                        m.buildAndRenderStats()
+                        return m, nil
+                    }
                     if msg.Type == tea.KeyEnter {
                         // Open time distribution sub-chart
                         m.openStatsTrendModal()

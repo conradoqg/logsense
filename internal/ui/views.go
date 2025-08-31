@@ -285,7 +285,10 @@ func computeStatsItems(field string, entries []model.LogEntry) []statItem {
             type kv struct{ k float64; v int }
             arr := make([]kv, 0, len(uniq))
             for k, v := range uniq { arr = append(arr, kv{k, v}) }
-            sort.Slice(arr, func(i, j int) bool { return arr[i].v > arr[j].v })
+            sort.Slice(arr, func(i, j int) bool {
+                if arr[i].v != arr[j].v { return arr[i].v > arr[j].v }
+                return arr[i].k < arr[j].k
+            })
             for _, it := range arr {
                 items = append(items, statItem{
                     label:   formatNumericLabel(it.k),
@@ -331,7 +334,10 @@ func computeStatsItems(field string, entries []model.LogEntry) []statItem {
     type kv struct{ k string; v int }
     arr := make([]kv, 0, len(counts))
     for k, v := range counts { arr = append(arr, kv{k, v}) }
-    sort.Slice(arr, func(i, j int) bool { return arr[i].v > arr[j].v })
+    sort.Slice(arr, func(i, j int) bool {
+        if arr[i].v != arr[j].v { return arr[i].v > arr[j].v }
+        return arr[i].k < arr[j].k
+    })
     for _, it := range arr { items = append(items, statItem{ label: it.k, svalue: it.k, count: it.v }) }
     return items
 }
