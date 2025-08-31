@@ -44,6 +44,8 @@ func (m *Model) refreshFiltered() {
 			_ = m.updateDiscoveryFromEntry(entries[i])
 		}
 	}
+	// Recompute how many columns fit given current terminal and adjustments
+	m.autofitMaxCols()
 	// Determine visible columns and precompute widths once per refresh
 	allCols := m.deriveColumns()
 	cols := m.visibleColumns(allCols)
@@ -165,40 +167,70 @@ func (m *Model) autofitMaxCols() {
 		m.maxCols = 0
 		return
 	}
+	// Effective table width
 	width := m.termWidth
 	if width <= 0 {
 		width = 120
 	} // default before first WindowSizeMsg
-	padR := 1
+	padR := 1 // table cell right padding
 	markerW := 1
-	sum := 0
-	count := 0
-	// Track overhead while adding columns: right padding per column incl. marker and one-gutter per data col
-	overhead := markerW + padR // marker cell width and its right padding
-	for i := m.colOffset; i < len(all); i++ {
-		c := all[i]
-		// Minimal width for this column (use unselected header width and type min plus any user adjustment)
-		minW := headerMinWidth(c, false)
-		if m.colWidthAdj != nil {
-			minW += m.colWidthAdj[c]
-			if minW < headerMinWidth(c, false) {
-				minW = headerMinWidth(c, false)
+
+	// Helper to compute the minimal width needed for a slice of columns
+	minNeed := func(start, count int) int {
+		if count <= 0 {
+			return 0
+		}
+		// Data columns minimal widths + gutters + overall padding + marker
+		sum := 0
+		for j := 0; j < count; j++ {
+			idx := start + j
+			if idx < 0 || idx >= len(all) {
+				break
+			}
+			name := all[idx]
+			// Base minimal width: use unselected header to keep a stable
+			// column count when navigating (selection markers are visual only).
+			sel := false
+			mw := headerMinWidth(name, sel)
+			// Apply user adjustments (clamped by type/header minimum)
+			if m.colWidthAdj != nil {
+				mw += m.colWidthAdj[name]
+				baseMin := headerMinWidth(name, sel)
+				if mw < baseMin {
+					mw = baseMin
+				}
+			}
+			// Include inter-column gutter except for last; we'll add gutters separately below
+			sum += mw
+			if j < count-1 {
+				sum += 1 // gutter between data columns
 			}
 		}
-		// If we add this column, overhead grows by one gutter and one right padding
-		need := sum + minW + overhead + padR + 1 // +1 gutter between columns
-		if need <= width {
-			sum += minW
-			overhead += padR + 1
-			count++
-		} else {
-			break
+		// Total padding: marker + (data cols + marker) right padding
+		totalPad := (count + 1) * padR
+		// Add marker cell width
+		need := sum + markerW + totalPad
+		// Also account for gutter between marker and first data column
+		if count > 0 {
+			need += 1
 		}
+		return need
 	}
-	if count <= 0 {
-		count = 1
+
+	// Greedily add columns while the minimal required width fits.
+	max := 0
+	for n := 1; m.colOffset+n <= len(all); n++ {
+		need := minNeed(m.colOffset, n)
+		if need <= width {
+			max = n
+			continue
+		}
+		break
 	}
-	m.maxCols = count
+	if max <= 0 {
+		max = 1
+	}
+	m.maxCols = max
 }
 
 func (m *Model) updateDiscoveryFromEntry(e model.LogEntry) bool {
@@ -255,6 +287,9 @@ func (m *Model) applyColumns(cols []string) {
 		cs = append(cs, table.Column{Title: title, Width: widths[i]})
 	}
 	m.cols = cols
+	// Avoid Bubbles table rendering rows with mismatched column count by
+	// clearing rows before changing columns. Callers set rows right after.
+	m.tbl.SetRows([]table.Row{})
 	m.tbl.SetColumns(cs)
 }
 
@@ -324,8 +359,9 @@ func (m *Model) computeWidths(cols []string) []int {
 		if base[i] < minW(c) {
 			base[i] = minW(c)
 		}
-		// Ensure header fits regardless of selection state
-		need := headerMinWidth(c, (m.colOffset+i) == m.selColIdx)
+		// Ensure header baseline fits (ignore selection markers to avoid
+		// column-count changes or overflow when selecting the last column).
+		need := headerMinWidth(c, false)
 		if base[i] < need {
 			base[i] = need
 		}
@@ -337,19 +373,38 @@ func (m *Model) computeWidths(cols []string) []int {
 	}
 	over := sum - avail
 	if over > 0 {
-		// Prefer shrinking message column
+		// Prefer shrinking message column, but avoid shrinking the
+		// currently selected column to preserve user adjustments.
+		selectedVis := -1
+		for i := range cols {
+			if (m.colOffset + i) == m.selColIdx {
+				selectedVis = i
+				break
+			}
+		}
 		target := -1
 		for i, c := range cols {
-			if c == "msg" || c == "message" {
+			if (c == "msg" || c == "message") && i != selectedVis {
 				target = i
 				break
+			}
+		}
+		if target == -1 {
+			// Fallback: last non-selected column
+			for i := len(cols) - 1; i >= 0; i-- {
+				if i != selectedVis {
+					target = i
+					break
+				}
 			}
 		}
 		shrink := func(i int, need int) int {
 			if i < 0 || i >= len(base) {
 				return need
 			}
-			mw := headerMinWidth(cols[i], (m.colOffset+i) == m.selColIdx)
+			// Allow shrinking down to baseline header width (ignoring
+			// selection markers) to prevent overflow/wrapping.
+			mw := headerMinWidth(cols[i], false)
 			can := base[i] - mw
 			if can <= 0 {
 				return need
@@ -366,10 +421,15 @@ func (m *Model) computeWidths(cols []string) []int {
 			if over <= 0 {
 				break
 			}
-			if i == target {
+			if i == target || i == selectedVis {
 				continue
 			}
 			over = shrink(i, over)
+		}
+		// As a last resort, allow shrinking the selected column down to
+		// baseline header width to eliminate any remaining overflow.
+		if over > 0 && selectedVis != -1 {
+			over = shrink(selectedVis, over)
 		}
 	} else if over < 0 {
 		// Distribute extra space, prefer message column

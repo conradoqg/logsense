@@ -77,10 +77,10 @@ func Load() (*Config, error) {
 	cfg.ShowVersion = showVersion
 	cfg.Theme = Theme(theme)
 
-    // If reading from stdin or no file provided (demo), ignore --follow; only applies to --file.
-    if cfg.UseStdin || cfg.FilePath == "" {
-        cfg.Follow = false
-    }
+	// If reading from stdin or no file provided (demo), ignore --follow; only applies to --file.
+	if cfg.UseStdin || cfg.FilePath == "" {
+		cfg.Follow = false
+	}
 
 	if cfg.ExportFormat != "" && cfg.ExportOut == "" {
 		return nil, errors.New("--export requires --out path")

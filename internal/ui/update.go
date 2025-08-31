@@ -1,19 +1,19 @@
 package ui
 
 import (
-    "context"
-    "fmt"
-    "strconv"
-    "strings"
-    "time"
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"logsense/internal/ai"
-    "logsense/internal/export"
-    "logsense/internal/filter"
-    "logsense/internal/ingest"
-    "logsense/internal/util/logx"
+	"logsense/internal/export"
+	"logsense/internal/filter"
+	"logsense/internal/ingest"
+	"logsense/internal/util/logx"
 )
 
 // Messages for Explain (OpenAI)
@@ -371,13 +371,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				// Do not swallow other keys; allow table/shortcuts to work
-			} else if m.inlineMode == inlineSearch && m.searchEditing {
-				// Route only text-editing keys to the input; pass others through
-				if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete {
-					var cmd tea.Cmd
-					m.search, cmd = m.search.Update(msg)
-					return m, cmd
-				}
+			} else if (m.inlineMode == inlineSearch && m.searchEditing) || m.inlineMode == inlineFilter || m.inlineMode == inlineBuffer {
+				// When editing inline inputs (search/filter/buffer), route all keys
+				// to the text input and suppress global shortcuts. ESC and Enter
+				// are handled earlier in this function.
+				var cmd tea.Cmd
+				m.search, cmd = m.search.Update(msg)
+				return m, cmd
 			}
 		}
 
@@ -389,6 +389,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c := all[m.selColIdx]
 				m.colWidthAdj[c] += 2
 				m.columnsDirty = true
+				m.autofitMaxCols()
 				m.applyColumns(m.visibleColumns(all))
 				m.refreshFiltered()
 			}
@@ -399,6 +400,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c := all[m.selColIdx]
 				m.colWidthAdj[c] -= 2
 				m.columnsDirty = true
+				m.autofitMaxCols()
 				m.applyColumns(m.visibleColumns(all))
 				m.refreshFiltered()
 			}
@@ -413,10 +415,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.criteria.Field = all[m.selColIdx]
 			}
+			m.search.Focus()
 			return m, nil
 		case keyMatches(msg, m.keymap.Buffer):
 			m.inlineMode = inlineBuffer
 			m.search.SetValue("")
+			m.search.Focus()
 			return m, nil
 		case keyMatches(msg, m.keymap.Pause):
 			if m.state == stateRunning {
@@ -425,7 +429,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 			}
 			return m, nil
-	case keyMatches(msg, m.keymap.Follow):
+		case keyMatches(msg, m.keymap.Follow):
 			// Follow only makes sense for files, not stdin/demo
 			if m.cfg.UseStdin || m.source == string(ingest.SourceStdin) || m.source == string(ingest.SourceDemo) {
 				m.lastMsg = "follow is not applicable for stdin/demo"
@@ -484,6 +488,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.selColIdx < m.colOffset {
 					m.colOffset = m.selColIdx
 				}
+				m.autofitMaxCols()
 				m.applyColumns(m.visibleColumns(all))
 				m.refreshFiltered()
 			}
@@ -498,6 +503,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.colOffset = 0
 					}
 				}
+				m.autofitMaxCols()
 				m.applyColumns(m.visibleColumns(all))
 				m.refreshFiltered()
 			}
@@ -588,6 +594,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.netBusy = false
 				m.lastMsg = ""
 			}
+			m.autofitMaxCols()
 			m.applyColumns(m.visibleColumns(m.deriveColumns()))
 			m.rowsDirty = true
 			m.columnsDirty = true
@@ -615,6 +622,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.colOffset = 0
 			}
 		}
+		m.autofitMaxCols()
 		m.applyColumns(m.visibleColumns(all))
 		m.rowsDirty = true
 		m.columnsDirty = true
