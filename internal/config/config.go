@@ -16,11 +16,10 @@ const (
 )
 
 type Config struct {
-    FilePath         string
-    UseStdin         bool
-    Follow           bool
-    NoFollow         bool
-    MaxBuffer        int
+	FilePath         string
+	UseStdin         bool
+	Follow           bool
+	MaxBuffer        int
 	BlockSizeMB      int
 	Theme            Theme
 	Offline          bool
@@ -36,12 +35,14 @@ type Config struct {
 	// Internal
 	IsPipedStdin bool
 
-    // Meta
-    ShowVersion bool
+	// Meta
+	ShowVersion bool
 }
 
 func Load() (*Config, error) {
-    cfg := &Config{Follow: true}
+	// Default to non-follow so running with --file shows existing lines.
+	// Users can toggle follow in the UI or use tailing via the 'f' key.
+	cfg := &Config{Follow: false}
 
 	// Detect if stdin is piped
 	fi, _ := os.Stdin.Stat()
@@ -50,8 +51,8 @@ func Load() (*Config, error) {
 	fs := flag.NewFlagSet("logsense", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-    fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
-    fs.BoolVar(&cfg.NoFollow, "no-follow", false, "do not follow (tail -f off)")
+	fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
+	fs.BoolVar(&cfg.Follow, "follow", false, "when reading --file, start in follow mode (tail -f)")
 	fs.BoolVar(&cfg.UseStdin, "stdin", false, "read from stdin (default: auto if piped)")
 	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 200000, "ring buffer size (min 50000)")
 	fs.IntVar(&cfg.BlockSizeMB, "block-size-mb", 0, "when reading a file (no follow), read only the last N MB instead of the whole file (0=all)")
@@ -67,16 +68,17 @@ func Load() (*Config, error) {
 	fs.StringVar(&cfg.ExportFormat, "export", "", "export filtered view: csv|json")
 	fs.StringVar(&cfg.ExportOut, "out", "", "output path for export")
 
-    showVersion := false
-    fs.BoolVar(&showVersion, "version", false, "print version and exit")
+	showVersion := false
+	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 
-    if err := fs.Parse(os.Args[1:]); err != nil {
-        return nil, err
-    }
-    cfg.ShowVersion = showVersion
-    cfg.Theme = Theme(theme)
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return nil, err
+	}
+	cfg.ShowVersion = showVersion
+	cfg.Theme = Theme(theme)
 
-    if cfg.NoFollow {
+    // If reading from stdin or no file provided (demo), ignore --follow; only applies to --file.
+    if cfg.UseStdin || cfg.FilePath == "" {
         cfg.Follow = false
     }
 

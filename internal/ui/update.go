@@ -7,20 +7,21 @@ import (
     "strings"
     "time"
 
-    tea "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 
-    "logsense/internal/ai"
+	"logsense/internal/ai"
     "logsense/internal/export"
     "logsense/internal/filter"
+    "logsense/internal/ingest"
     "logsense/internal/util/logx"
 )
 
 // Messages for Explain (OpenAI)
 type explainStartMsg struct{}
-type explainDoneMsg struct{
-    ok bool
-    content string
-    err string
+type explainDoneMsg struct {
+	ok      bool
+	content string
+	err     string
 }
 
 func (m *Model) buildHelpItems() []helpItem {
@@ -48,19 +49,19 @@ func (m *Model) buildHelpItems() []helpItem {
 		{group: "Views", text: "Inspector", key: m.keymap.InspectorTab},
 		{group: "Views", text: "View raw log", key: m.keymap.ViewRaw},
 		{group: "Views", text: "Application logs", key: m.keymap.AppLogs},
-        {group: "Views", text: "Stats for column", key: m.keymap.Stats},
+		{group: "Views", text: "Stats for column", key: m.keymap.Stats},
 
 		{group: "Control", text: "Pause/Resume", key: km.Pause},
 		{group: "Control", text: "Toggle follow", key: km.Follow},
 		{group: "Control", text: "Change buffer size", key: km.Buffer},
 		{group: "Control", text: "Export", key: km.Export},
-        {group: "Control", text: "Detect format", key: km.Redetect},
+		{group: "Control", text: "Detect format", key: km.Redetect},
 		{group: "Control", text: "Help", key: km.Help},
 		{group: "Control", text: "Quit", key: km.Quit},
 
 		{group: "Actions", text: "Copy current line", key: km.CopyLine},
 
-    	{group: "AI", text: "Explain log (OpenAI)", key: km.Explain},
+		{group: "AI", text: "Explain log (OpenAI)", key: km.Explain},
 	}
 	return items
 }
@@ -84,62 +85,74 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-            if m.modalActive {
-                // Modal key handling
-                if m.modalKind == modalStatsTime {
-                    // ESC returns to stats list; Enter falls through to close
-                    if msg.Type == tea.KeyEsc {
-                        m.modalKind = modalStats
-                        m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
-                        m.buildAndRenderStats()
-                        m.modalVP.SetContent(m.modalBody)
-                        return m, nil
-                    }
-                }
-                // Stats modal: navigate/select
-                if m.modalKind == modalStats {
-                    if msg.Type == tea.KeyUp {
-                        if m.statsSel > 0 {
-                            m.statsSel--
-                            m.buildAndRenderStats()
-                        }
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyDown {
-                        if m.statsSel+1 < len(m.statsItems) {
-                            m.statsSel++
-                            m.buildAndRenderStats()
-                        }
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyPgUp {
-                        if m.modalVP.Height <= 0 { return m, nil }
-                        step := m.modalVP.Height - 1
-                        if step < 1 { step = 1 }
-                        m.statsSel -= step
-                        if m.statsSel < 0 { m.statsSel = 0 }
-                        m.buildAndRenderStats()
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyPgDown {
-                        if m.modalVP.Height <= 0 { return m, nil }
-                        step := m.modalVP.Height - 1
-                        if step < 1 { step = 1 }
-                        m.statsSel += step
-                        if m.statsSel >= len(m.statsItems) { m.statsSel = len(m.statsItems) - 1 }
-                        m.buildAndRenderStats()
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyEnter {
-                        // Open time distribution sub-chart
-                        m.openStatsTrendModal()
-                        return m, nil
-                    }
-                }
-                if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
-                    // If applying in search/filter
-                    if msg.Type == tea.KeyEnter {
-                        if m.modalKind == modalSearch {
+		if m.modalActive {
+			// Modal key handling
+			if m.modalKind == modalStatsTime {
+				// ESC returns to stats list; Enter falls through to close
+				if msg.Type == tea.KeyEsc {
+					m.modalKind = modalStats
+					m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
+					m.buildAndRenderStats()
+					m.modalVP.SetContent(m.modalBody)
+					return m, nil
+				}
+			}
+			// Stats modal: navigate/select
+			if m.modalKind == modalStats {
+				if msg.Type == tea.KeyUp {
+					if m.statsSel > 0 {
+						m.statsSel--
+						m.buildAndRenderStats()
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					if m.statsSel+1 < len(m.statsItems) {
+						m.statsSel++
+						m.buildAndRenderStats()
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyPgUp {
+					if m.modalVP.Height <= 0 {
+						return m, nil
+					}
+					step := m.modalVP.Height - 1
+					if step < 1 {
+						step = 1
+					}
+					m.statsSel -= step
+					if m.statsSel < 0 {
+						m.statsSel = 0
+					}
+					m.buildAndRenderStats()
+					return m, nil
+				}
+				if msg.Type == tea.KeyPgDown {
+					if m.modalVP.Height <= 0 {
+						return m, nil
+					}
+					step := m.modalVP.Height - 1
+					if step < 1 {
+						step = 1
+					}
+					m.statsSel += step
+					if m.statsSel >= len(m.statsItems) {
+						m.statsSel = len(m.statsItems) - 1
+					}
+					m.buildAndRenderStats()
+					return m, nil
+				}
+				if msg.Type == tea.KeyEnter {
+					// Open time distribution sub-chart
+					m.openStatsTrendModal()
+					return m, nil
+				}
+			}
+			if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
+				// If applying in search/filter
+				if msg.Type == tea.KeyEnter {
+					if m.modalKind == modalSearch {
 						q := strings.TrimSpace(m.search.Value())
 						if q != "" {
 							m.searchActive = true
@@ -192,51 +205,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-                if msg.Type == tea.KeyRunes && msg.String() == "c" && (m.modalKind == modalInspector || m.modalKind == modalStats || m.modalKind == modalStatsTime || m.modalKind == modalRaw || m.modalKind == modalLogs || m.modalKind == modalExplain) {
-                    copyToClipboard(m.modalBody)
-                    m.lastMsg = "copied to clipboard"
-                    return m, nil
-                }
-                // Help modal navigation and actions
-                if m.modalKind == modalHelp {
-                    if msg.Type == tea.KeyUp {
-                        if m.helpSel > 0 {
-                            m.helpSel--
-                            m.modalVP.SetContent(m.renderHelp())
-                        }
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyDown {
-                        if m.helpSel+1 < len(m.helpItems) {
-                            m.helpSel++
-                            m.modalVP.SetContent(m.renderHelp())
-                        }
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyPgUp {
-                        page := m.modalVP.Height - 1
-                        if page < 1 {
-                            page = 1
-                        }
-                        m.helpSel -= page
-                        if m.helpSel < 0 {
-                            m.helpSel = 0
-                        }
-                        m.modalVP.SetContent(m.renderHelp())
-                        return m, nil
-                    }
-                    if msg.Type == tea.KeyPgDown {
-                        page := m.modalVP.Height - 1
-                        if page < 1 {
-                            page = 1
-                        }
-                        m.helpSel += page
-                        if m.helpSel >= len(m.helpItems) {
-                            m.helpSel = len(m.helpItems) - 1
-                        }
-                        m.modalVP.SetContent(m.renderHelp())
-                        return m, nil
-                    }
+			if msg.Type == tea.KeyRunes && msg.String() == "c" && (m.modalKind == modalInspector || m.modalKind == modalStats || m.modalKind == modalStatsTime || m.modalKind == modalRaw || m.modalKind == modalLogs || m.modalKind == modalExplain) {
+				copyToClipboard(m.modalBody)
+				m.lastMsg = "copied to clipboard"
+				return m, nil
+			}
+			// Help modal navigation and actions
+			if m.modalKind == modalHelp {
+				if msg.Type == tea.KeyUp {
+					if m.helpSel > 0 {
+						m.helpSel--
+						m.modalVP.SetContent(m.renderHelp())
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					if m.helpSel+1 < len(m.helpItems) {
+						m.helpSel++
+						m.modalVP.SetContent(m.renderHelp())
+					}
+					return m, nil
+				}
+				if msg.Type == tea.KeyPgUp {
+					page := m.modalVP.Height - 1
+					if page < 1 {
+						page = 1
+					}
+					m.helpSel -= page
+					if m.helpSel < 0 {
+						m.helpSel = 0
+					}
+					m.modalVP.SetContent(m.renderHelp())
+					return m, nil
+				}
+				if msg.Type == tea.KeyPgDown {
+					page := m.modalVP.Height - 1
+					if page < 1 {
+						page = 1
+					}
+					m.helpSel += page
+					if m.helpSel >= len(m.helpItems) {
+						m.helpSel = len(m.helpItems) - 1
+					}
+					m.modalVP.SetContent(m.renderHelp())
+					return m, nil
+				}
 				if msg.Type == tea.KeyEnter {
 					if len(m.helpItems) > 0 {
 						it := m.helpItems[m.helpSel]
@@ -412,7 +425,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 			}
 			return m, nil
-		case keyMatches(msg, m.keymap.Follow):
+	case keyMatches(msg, m.keymap.Follow):
+			// Follow only makes sense for files, not stdin/demo
+			if m.cfg.UseStdin || m.source == string(ingest.SourceStdin) || m.source == string(ingest.SourceDemo) {
+				m.lastMsg = "follow is not applicable for stdin/demo"
+				return m, nil
+			}
 			m.follow = !m.follow
 			// Restart pipeline with new follow state; preserve tail offset if possible
 			if m.follow {
@@ -439,7 +457,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case keyMatches(msg, m.keymap.Help):
 			m.openHelpModal()
 			return m, nil
-    // Removed StreamTab and FilterTab shortcuts
+			// Removed StreamTab and FilterTab shortcuts
 		case keyMatches(msg, m.keymap.InspectorTab):
 			m.openInspectorModal()
 			return m, nil
@@ -623,7 +641,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case toastMsg:
 		m.lastMsg = msg.text
 		return m, nil
-case openaiDoneMsg:
+	case openaiDoneMsg:
 		m.netBusy = false
 		if msg.ok {
 			// Apply new schema and re-parse existing buffer
@@ -649,28 +667,28 @@ case openaiDoneMsg:
 				logx.Warnf("openai: failed to infer schema; keeping heuristics")
 			}
 		}
-    // Ensure no further child updates clobber state and trigger a re-render immediately
-    return m, nil
-case explainStartMsg:
-    m.netBusy = true
-    m.lastMsg = "📡 OpenAI: explaining log entry..."
-    return m, nil
-case explainDoneMsg:
-    m.netBusy = false
-    if msg.ok {
-        // Show explanation in a modal
-        m.modalActive = true
-        m.modalKind = modalExplain
-        m.modalTitle = "Explanation"
-        m.modalBody = strings.TrimSpace(msg.content)
-        m.resizeModal()
-        m.lastMsg = "✅ OpenAI explanation ready"
-        logx.Infof("openai: explanation success (%d chars)", len(m.modalBody))
-    } else {
-        m.lastMsg = fmt.Sprintf("⚠️ OpenAI explain failed: %s", msg.err)
-        logx.Warnf("openai: explain failed: %s", msg.err)
-    }
-    return m, nil
+		// Ensure no further child updates clobber state and trigger a re-render immediately
+		return m, nil
+	case explainStartMsg:
+		m.netBusy = true
+		m.lastMsg = "📡 OpenAI: explaining log entry..."
+		return m, nil
+	case explainDoneMsg:
+		m.netBusy = false
+		if msg.ok {
+			// Show explanation in a modal
+			m.modalActive = true
+			m.modalKind = modalExplain
+			m.modalTitle = "Explanation"
+			m.modalBody = strings.TrimSpace(msg.content)
+			m.resizeModal()
+			m.lastMsg = "✅ OpenAI explanation ready"
+			logx.Infof("openai: explanation success (%d chars)", len(m.modalBody))
+		} else {
+			m.lastMsg = fmt.Sprintf("⚠️ OpenAI explain failed: %s", msg.err)
+			logx.Warnf("openai: explain failed: %s", msg.err)
+		}
+		return m, nil
 	case tickMsg:
 		// Pull lines non-blocking, parse, push to ring
 		if m.state == stateRunning {

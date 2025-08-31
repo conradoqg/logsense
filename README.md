@@ -5,7 +5,7 @@ Logsense is a fast, keyboard-driven log viewer for the terminal. It auto-detects
 Highlights:
 
 - Auto-detects formats: JSON Lines, logfmt, Apache Combined, RFC5424 syslog (with sensible fallback).
-- Streaming by default: follows files like tail -f and can read only the last N MB for quick scans.
+- Streaming support: can follow files like tail -f; by default starts from existing content (non-follow) and can read only the last N MB for quick scans.
 - Powerful TUI: instant search (plain or regex), column stats, inspector, copy line, pause/resume, toggle follow.
 - Structured export: write filtered results to CSV or JSON.
 - Works anywhere: read from a path or pipe from any command.
@@ -34,7 +34,7 @@ make build
 cat testdata/json_lines.ndjson | logsense
 ```
 
-- Read a file (follow is default):
+- Read a file (not following by default; press `t` or use `--follow` to tail):
 
 ```
 logsense --file=/var/log/app.log
@@ -49,7 +49,7 @@ logsense
 ## Key Flags
 
 - `--file=PATH`: log file path
-- `--no-follow`: disable follow (tail -f off)
+- `--follow`: when using `--file`, start in follow mode (tail -f)
 - `--stdin`: force stdin (auto-detected when piped)
 - `--max-buffer=50000`: ring buffer size
 - `--block-size-mb=16`: when reading a file without `--follow`, only load the last N MB (0 = whole file)

@@ -1,9 +1,9 @@
 package ui
 
 import (
-    "context"
-    "strings"
-    "time"
+	"context"
+	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -38,16 +38,16 @@ const (
 type modalKind int
 
 const (
-    modalNone modalKind = iota
-    modalHelp
-    modalStats
-    modalStatsTime
-    modalInspector
-    modalSearch
-    modalFilter
-    modalRaw
-    modalLogs
-    modalExplain
+	modalNone modalKind = iota
+	modalHelp
+	modalStats
+	modalStatsTime
+	modalInspector
+	modalSearch
+	modalFilter
+	modalRaw
+	modalLogs
+	modalExplain
 )
 
 type inlineMode int
@@ -116,24 +116,24 @@ type Model struct {
 	discoveredSet map[string]bool
 
 	// status
-	source       string
-	follow       bool
-	lastMsg      string
-	lastSearch   string
-	showHelp     bool
-    showStats    bool
-    statsField   string
-    // Stats modal state
-    statsItems   []statItem
-    statsSel     int
+	source     string
+	follow     bool
+	lastMsg    string
+	lastSearch string
+	showHelp   bool
+	showStats  bool
+	statsField string
+	// Stats modal state
+	statsItems   []statItem
+	statsSel     int
 	netBusy      bool
 	failStreak   int
-    prevDropped  uint64
-    invalidCount int
+	prevDropped  uint64
+	invalidCount int
 
-    // Entry rate (lines/sec), EWMA-smoothed
-    rateEWMA float64
-    rateLast time.Time
+	// Entry rate (lines/sec), EWMA-smoothed
+	rateEWMA float64
+	rateLast time.Time
 
 	// Modal popup
 	modalActive bool
@@ -157,24 +157,24 @@ type Model struct {
 }
 
 type helpItem struct {
-    group string
-    text  string
-    key   tea.Key
+	group string
+	text  string
+	key   tea.Key
 }
 
 // statItem represents one row in the stats list. It can be either a
 // categorical value or a numeric bin range.
 type statItem struct {
-    label    string
-    count    int
-    // Categorical selection
-    svalue   string
-    // Numeric selection
-    hasRange bool
-    low      float64
-    high     float64
-    hasExact bool
-    fvalue   float64
+	label string
+	count int
+	// Categorical selection
+	svalue string
+	// Numeric selection
+	hasRange bool
+	low      float64
+	high     float64
+	hasExact bool
+	fvalue   float64
 }
 
 func keyCmd(k tea.Key) tea.Cmd {

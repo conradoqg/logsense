@@ -9,15 +9,15 @@ import (
 )
 
 func (m *Model) View() string {
-    switch m.tab {
-    case tabStream:
-        v := m.renderStream()
-        if m.modalActive {
-            // Dim the background content while keeping it visible
-            dimmed := lipgloss.NewStyle().Faint(true).Render(v)
-            v = overlay(dimmed, m.renderModal())
-        }
-        return v
+	switch m.tab {
+	case tabStream:
+		v := m.renderStream()
+		if m.modalActive {
+			// Dim the background content while keeping it visible
+			dimmed := lipgloss.NewStyle().Faint(true).Render(v)
+			v = overlay(dimmed, m.renderModal())
+		}
+		return v
 	case tabFilters:
 		return m.renderFilters()
 	case tabInspector:
@@ -51,18 +51,18 @@ func (m *Model) renderStream() string {
 		}
 		curDisp = cur + 1
 	}
-    // Compact status: only running state, follow state, current line/total
-    rate := m.rateEWMA
-    // Display rate with 1 decimal if meaningful
-    rateStr := "0/s"
-    if rate >= 0.05 { // avoid noise
-        rateStr = fmt.Sprintf("%.1f/s", rate)
-    }
-    status := fmt.Sprintf("[%s] | line:%d/%d rate:%s follow:%v | %s | %s",
-        map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
-        curDisp, total,
-        rateStr,
-        m.follow, hint, m.lastMsg)
+	// Compact status: only running state, follow state, current line/total
+	rate := m.rateEWMA
+	// Display rate with 1 decimal if meaningful
+	rateStr := "0/s"
+	if rate >= 0.05 { // avoid noise
+		rateStr = fmt.Sprintf("%.1f/s", rate)
+	}
+	status := fmt.Sprintf("[%s] | line:%d/%d rate:%s follow:%v | %s | %s",
+		map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
+		curDisp, total,
+		rateStr,
+		m.follow, hint, m.lastMsg)
 	// Inline input line above status bar (or active filter summary)
 	var bottom string
 	if m.inlineMode == inlineSearch {
@@ -152,7 +152,7 @@ func (m *Model) renderHelp() string {
 	if m.helpSel >= len(m.helpItems) {
 		m.helpSel = len(m.helpItems) - 1
 	}
-    lines := []string{"Shortcuts:"}
+	lines := []string{"Shortcuts:"}
 	currentGroup := ""
 	lineIndexOfSel := 0
 	for i, it := range m.helpItems {
@@ -200,12 +200,12 @@ func (m *Model) openHelpModal() {
 }
 
 func (m *Model) openStatsModal() {
-    m.modalActive = true
-    m.modalKind = modalStats
-    m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
-    // Build items and render with fixed split for label/bars
-    m.buildAndRenderStats()
-    m.resizeModal()
+	m.modalActive = true
+	m.modalKind = modalStats
+	m.modalTitle = fmt.Sprintf("Stats: %s", m.statsField)
+	// Build items and render with fixed split for label/bars
+	m.buildAndRenderStats()
+	m.resizeModal()
 }
 
 func (m *Model) openInspectorModal() {
@@ -256,25 +256,25 @@ func (m *Model) resizeModal() {
 		h = 5
 	}
 	m.modalVP = viewport.New(w-4, h-4)
-    if m.modalKind == modalSearch {
-        // content will be dynamic; minimal body
-        m.modalVP.SetContent("")
-    } else if m.modalKind == modalStats {
-        // Re-render stats to fit new size
-        m.buildAndRenderStats()
-        m.modalVP.SetContent(m.modalBody)
-    } else if m.modalKind == modalStatsTime {
-        // Re-render time distribution with new size
-        m.renderStatsTime()
-        m.modalVP.SetContent(m.modalBody)
-    } else {
-        m.modalVP.SetContent(m.modalBody)
-    }
+	if m.modalKind == modalSearch {
+		// content will be dynamic; minimal body
+		m.modalVP.SetContent("")
+	} else if m.modalKind == modalStats {
+		// Re-render stats to fit new size
+		m.buildAndRenderStats()
+		m.modalVP.SetContent(m.modalBody)
+	} else if m.modalKind == modalStatsTime {
+		// Re-render time distribution with new size
+		m.renderStatsTime()
+		m.modalVP.SetContent(m.modalBody)
+	} else {
+		m.modalVP.SetContent(m.modalBody)
+	}
 }
 
 func (m *Model) renderModal() string {
-    // Build content
-    content := ""
+	// Build content
+	content := ""
 	switch m.modalKind {
 	case modalHelp:
 		// Update content dynamically for help menu
@@ -285,135 +285,150 @@ func (m *Model) renderModal() string {
 		content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
 	case modalFilter:
 		content = m.search.View() + "\n[enter]=apply  [esc]=close"
-    case modalInspector, modalRaw, modalExplain:
-        content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
-    case modalStats:
-        content = m.modalVP.View() + "\n[esc]=close  [enter]=open  [↑/↓]=navigate  [c]=copy"
-    case modalStatsTime:
-        content = m.modalVP.View() + "\n[esc]=back  [enter]=close  [c]=copy"
-    case modalLogs:
-        // Fixed status header above navigable application log viewport
-        header := []string{
-            "Status:",
-            fmt.Sprintf("format: %s (%s)", m.schema.FormatName, m.schema.ParseStrategy),
-            fmt.Sprintf("rows: %d  ingested: %d  overflow: %d  invalid: %d", len(m.filtered), m.total, m.dropped, m.invalidCount),
-            fmt.Sprintf("source: %s  follow: %v", m.source, m.follow),
-        }
-        h := m.styles.Help.Render(strings.Join(header, "\n"))
-        content = h + "\n" + m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
+	case modalInspector, modalRaw, modalExplain:
+		content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
+	case modalStats:
+		content = m.modalVP.View() + "\n[esc]=close  [enter]=open  [↑/↓]=navigate  [c]=copy"
+	case modalStatsTime:
+		content = m.modalVP.View() + "\n[esc]=back  [enter]=close  [c]=copy"
+	case modalLogs:
+		// Fixed status header above navigable application log viewport
+		header := []string{
+			"Status:",
+			fmt.Sprintf("format: %s (%s)", m.schema.FormatName, m.schema.ParseStrategy),
+			fmt.Sprintf("rows: %d  ingested: %d  overflow: %d  invalid: %d", len(m.filtered), m.total, m.dropped, m.invalidCount),
+			fmt.Sprintf("source: %s  follow: %v", m.source, m.follow),
+		}
+		h := m.styles.Help.Render(strings.Join(header, "\n"))
+		content = h + "\n" + m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
 	default:
 		content = m.modalVP.View() + "\n[esc/enter]=close"
 	}
-    boxW := m.termWidth - 6
-    if boxW < 20 {
-        boxW = 20
-    }
-    title := m.styles.PopupTitle.Render(m.modalTitle)
-    body := m.styles.PopupBox.Width(boxW).Render(title + "\n" + content)
-    // Center the modal box; do not cover entire background to keep it dimmed not dark
-    centered := lipgloss.Place(m.termWidth, m.termHeight, lipgloss.Center, lipgloss.Center, body)
-    return centered
+	boxW := m.termWidth - 6
+	if boxW < 20 {
+		boxW = 20
+	}
+	title := m.styles.PopupTitle.Render(m.modalTitle)
+	body := m.styles.PopupBox.Width(boxW).Render(title + "\n" + content)
+	// Center the modal box; do not cover entire background to keep it dimmed not dark
+	centered := lipgloss.Place(m.termWidth, m.termHeight, lipgloss.Center, lipgloss.Center, body)
+	return centered
 }
 
 func (m *Model) renderStats() string {
-    field := m.statsField
-    if field == "" {
-        field = m.currentColumn()
-    }
-    // Keep legacy function available; no longer used for modal rendering
-    s := buildStats(field, m.filtered)
-    return m.styles.Help.Render(s)
+	field := m.statsField
+	if field == "" {
+		field = m.currentColumn()
+	}
+	// Keep legacy function available; no longer used for modal rendering
+	s := buildStats(field, m.filtered)
+	return m.styles.Help.Render(s)
 }
 
 // buildAndRenderStats computes stats items for the current field and renders
 // them into the modal body using a fixed 50/50 split for label and bars.
 func (m *Model) buildAndRenderStats() {
-    field := m.statsField
-    if field == "" {
-        field = m.currentColumn()
-        m.statsField = field
-    }
-    // Preserve current selection identity across recomputes
-    var prev statItem
-    hasPrev := false
-    if m.statsSel >= 0 && m.statsSel < len(m.statsItems) {
-        prev = m.statsItems[m.statsSel]
-        hasPrev = true
-    }
-    items := computeStatsItems(field, m.filtered)
-    m.statsItems = items
-    if len(items) == 0 {
-        m.statsSel = 0
-    } else if hasPrev {
-        // Try to locate the previous selected item in the new list
-        idx := -1
-        for i, it := range items {
-            if prev.hasRange && it.hasRange {
-                if it.low == prev.low && it.high == prev.high { idx = i; break }
-            } else if prev.hasExact && it.hasExact {
-                if it.fvalue == prev.fvalue { idx = i; break }
-            } else if prev.svalue != "" && it.svalue != "" {
-                if it.svalue == prev.svalue { idx = i; break }
-            }
-        }
-        if idx >= 0 { m.statsSel = idx } else if m.statsSel >= len(items) { m.statsSel = len(items) - 1 }
-        if m.statsSel < 0 { m.statsSel = 0 }
-    } else if m.statsSel >= len(items) {
-        m.statsSel = 0
-    }
-    // Render with current modal width
-    width := m.modalVP.Width
-    if width <= 0 {
-        width = max(40, m.termWidth-10)
-    }
-    m.modalBody = renderStatsList(items, width, m.statsSel)
-    m.modalVP.SetContent(m.modalBody)
-    // Keep selected line visible in the stats viewport
-    if m.modalVP.Height > 0 {
-        top := m.modalVP.YOffset
-        bottom := top + m.modalVP.Height - 1
-        line := m.statsSel // one item per line, no header
-        if line <= top {
-            if line-1 >= 0 {
-                m.modalVP.YOffset = line - 1
-            } else {
-                m.modalVP.YOffset = 0
-            }
-        } else if line >= bottom {
-            m.modalVP.YOffset = line - m.modalVP.Height + 2
-            if m.modalVP.YOffset < 0 {
-                m.modalVP.YOffset = 0
-            }
-        }
-    }
+	field := m.statsField
+	if field == "" {
+		field = m.currentColumn()
+		m.statsField = field
+	}
+	// Preserve current selection identity across recomputes
+	var prev statItem
+	hasPrev := false
+	if m.statsSel >= 0 && m.statsSel < len(m.statsItems) {
+		prev = m.statsItems[m.statsSel]
+		hasPrev = true
+	}
+	items := computeStatsItems(field, m.filtered)
+	m.statsItems = items
+	if len(items) == 0 {
+		m.statsSel = 0
+	} else if hasPrev {
+		// Try to locate the previous selected item in the new list
+		idx := -1
+		for i, it := range items {
+			if prev.hasRange && it.hasRange {
+				if it.low == prev.low && it.high == prev.high {
+					idx = i
+					break
+				}
+			} else if prev.hasExact && it.hasExact {
+				if it.fvalue == prev.fvalue {
+					idx = i
+					break
+				}
+			} else if prev.svalue != "" && it.svalue != "" {
+				if it.svalue == prev.svalue {
+					idx = i
+					break
+				}
+			}
+		}
+		if idx >= 0 {
+			m.statsSel = idx
+		} else if m.statsSel >= len(items) {
+			m.statsSel = len(items) - 1
+		}
+		if m.statsSel < 0 {
+			m.statsSel = 0
+		}
+	} else if m.statsSel >= len(items) {
+		m.statsSel = 0
+	}
+	// Render with current modal width
+	width := m.modalVP.Width
+	if width <= 0 {
+		width = max(40, m.termWidth-10)
+	}
+	m.modalBody = renderStatsList(items, width, m.statsSel)
+	m.modalVP.SetContent(m.modalBody)
+	// Keep selected line visible in the stats viewport
+	if m.modalVP.Height > 0 {
+		top := m.modalVP.YOffset
+		bottom := top + m.modalVP.Height - 1
+		line := m.statsSel // one item per line, no header
+		if line <= top {
+			if line-1 >= 0 {
+				m.modalVP.YOffset = line - 1
+			} else {
+				m.modalVP.YOffset = 0
+			}
+		} else if line >= bottom {
+			m.modalVP.YOffset = line - m.modalVP.Height + 2
+			if m.modalVP.YOffset < 0 {
+				m.modalVP.YOffset = 0
+			}
+		}
+	}
 }
 
 // renderStatsTime rebuilds the time-distribution chart for the selected stats item.
 func (m *Model) renderStatsTime() {
-    width := m.modalVP.Width
-    height := m.modalVP.Height
-    if width < 20 {
-        width = 20
-    }
-    if height < 6 {
-        height = 6
-    }
-    content := buildTimeDistribution(m.statsField, m.statsItems, m.statsSel, m.filtered, width, height)
-    m.modalBody = content
-    m.modalVP.SetContent(content)
+	width := m.modalVP.Width
+	height := m.modalVP.Height
+	if width < 20 {
+		width = 20
+	}
+	if height < 6 {
+		height = 6
+	}
+	content := buildTimeDistribution(m.statsField, m.statsItems, m.statsSel, m.filtered, width, height)
+	m.modalBody = content
+	m.modalVP.SetContent(content)
 }
 
 // openStatsTrendModal opens the time-distribution chart for current selection.
 func (m *Model) openStatsTrendModal() {
-    if m.statsSel < 0 || m.statsSel >= len(m.statsItems) {
-        return
-    }
-    it := m.statsItems[m.statsSel]
-    m.modalActive = true
-    m.modalKind = modalStatsTime
-    m.modalTitle = fmt.Sprintf("%s over time: %s", m.statsField, it.label)
-    m.renderStatsTime()
-    m.resizeModal()
+	if m.statsSel < 0 || m.statsSel >= len(m.statsItems) {
+		return
+	}
+	it := m.statsItems[m.statsSel]
+	m.modalActive = true
+	m.modalKind = modalStatsTime
+	m.modalTitle = fmt.Sprintf("%s over time: %s", m.statsField, it.label)
+	m.renderStatsTime()
+	m.resizeModal()
 }
 
 func (m *Model) currentColumn() string {

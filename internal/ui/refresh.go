@@ -15,13 +15,13 @@ import (
 
 func (m *Model) refreshFiltered() {
 	// Remember if the cursor was at the bottom before refresh
-    wasAtBottom := false
-    prev := len(m.tbl.Rows())
-    if prev > 0 {
-        if c := m.tbl.Cursor(); c >= prev-1 {
-            wasAtBottom = true
-        }
-    }
+	wasAtBottom := false
+	prev := len(m.tbl.Rows())
+	if prev > 0 {
+		if c := m.tbl.Cursor(); c >= prev-1 {
+			wasAtBottom = true
+		}
+	}
 	// Only apply field-scoped filter via m.criteria (set when applying filter)
 	if ev, err := filter.NewEvaluator(m.criteria); err == nil {
 		m.eval = ev
@@ -35,9 +35,9 @@ func (m *Model) refreshFiltered() {
 		m.prevDropped = m.dropped
 		logx.Warnf("buffer overflow: dropped +%d (total=%d, cap=%d). Consider increasing --max-buffer (current=%d).", delta, m.dropped, m.ring.Cap(), m.cfg.MaxBuffer)
 	}
-    // Build a local filtered slice to avoid indexing into m.filtered while
-    // another concurrent refresh may reslice it. We'll assign back at the end.
-    localFiltered := make([]model.LogEntry, 0, len(entries))
+	// Build a local filtered slice to avoid indexing into m.filtered while
+	// another concurrent refresh may reslice it. We'll assign back at the end.
+	localFiltered := make([]model.LogEntry, 0, len(entries))
 	// One-time discovery fallback for non-follow full file drain: if not discovered yet, derive from current entries.
 	if len(m.discovered) == 0 {
 		for i := range entries {
@@ -49,18 +49,18 @@ func (m *Model) refreshFiltered() {
 	cols := m.visibleColumns(allCols)
 	widths := m.computeWidths(cols)
 	// Build filtered slice from ring snapshot
-    for i := range entries {
-        e := entries[i]
-        if m.eval != nil && !m.eval.Match(e, m.criteria) {
-            continue
-        }
-        localFiltered = append(localFiltered, e)
-    }
-    m.invalidCount = 0
-    // Iterate over the local snapshot to avoid out-of-range panics if
-    // m.filtered is concurrently modified by another refresh.
-    for i := range localFiltered {
-        e := localFiltered[i]
+	for i := range entries {
+		e := entries[i]
+		if m.eval != nil && !m.eval.Match(e, m.criteria) {
+			continue
+		}
+		localFiltered = append(localFiltered, e)
+	}
+	m.invalidCount = 0
+	// Iterate over the local snapshot to avoid out-of-range panics if
+	// m.filtered is concurrently modified by another refresh.
+	for i := range localFiltered {
+		e := localFiltered[i]
 		row := make([]string, 0, len(cols)+1)
 		if !parsedOK(e) {
 			m.invalidCount++
@@ -95,23 +95,23 @@ func (m *Model) refreshFiltered() {
 		}
 		rows = append(rows, row)
 	}
-    // Publish the new filtered slice atomically before applying UI updates.
-    m.filtered = localFiltered
-    m.applyColumns(cols)
+	// Publish the new filtered slice atomically before applying UI updates.
+	m.filtered = localFiltered
+	m.applyColumns(cols)
 	m.tbl.SetRows(rows)
-    // If we were at the bottom prior to refresh, keep sticking to the latest row
-    if wasAtBottom {
-        if n := len(rows); n > 0 {
-            m.tbl.SetCursor(n - 1)
-            m.ensureCursorVisible()
-        }
-    } else if prev == 0 {
-        // First population: select last row by default for better visibility
-        if n := len(rows); n > 0 {
-            m.tbl.SetCursor(n - 1)
-            m.ensureCursorVisible()
-        }
-    }
+	// If we were at the bottom prior to refresh, keep sticking to the latest row
+	if wasAtBottom {
+		if n := len(rows); n > 0 {
+			m.tbl.SetCursor(n - 1)
+			m.ensureCursorVisible()
+		}
+	} else if prev == 0 {
+		// First population: select last row by default for better visibility
+		if n := len(rows); n > 0 {
+			m.tbl.SetCursor(n - 1)
+			m.ensureCursorVisible()
+		}
+	}
 }
 
 // deriveColumns returns the preferred ordering of columns.

@@ -44,4 +44,4 @@ Examples:
 
 - Do not commit secrets. LLM usage reads `OPENAI_API_KEY` and supports `LOGSENSE_OPENAI_MODEL` and `LOGSENSE_OPENAI_BASE_URL`.
 - Local runs can disable networked features with `--offline`.
-- Useful flags: `--file`, `--no-follow`, `--stdin`, `--max-buffer`, `--block-size-mb`, `--theme`, `--format`, `--export`/`--out`.
+- Useful flags: `--file`, `--follow`, `--stdin`, `--max-buffer`, `--block-size-mb`, `--theme`, `--format`, `--export`/`--out`.
