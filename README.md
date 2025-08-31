@@ -65,33 +65,78 @@ logsense
 
 ## Docker
 
-Pull the image from GHCR (repository URL to be provided):
+Pull the image from GHCR:
 
 ```
-docker pull ghcr.io/<owner>/<repo>:latest
+docker pull ghcr.io/conradoqg/logsense:latest
 ```
 
-Run with a file mounted:
+Run with a file mounted (recommended):
 
 ```
 docker run --rm -it \
   -v /var/log:/var/log:ro \
   --env OPENAI_API_KEY \
-  ghcr.io/<owner>/<repo>:latest \
+  ghcr.io/conradoqg/logsense:latest \
   --file /var/log/syslog
 ```
 
-Pipe stdin:
+Important: the TUI requires a TTY. Piping into Docker with only `-i` does not allocate a TTY, so the UI will not render. Use one of the options below when you need to feed logs from another command into the containerized Logsense.
+
+### Feed live logs into Docker (TTY-safe options)
+
+- Write to a file and mount it (simple and robust):
+
+  - One-liner (background writer + TUI reader):
+
+    ```
+    kubectl logs deploy/ingress-nginx-controller -f -n tks-system > /tmp/ingress.log 2>/dev/null & writer=$! \
+    && docker run --rm -it -v /tmp:/data ghcr.io/conradoqg/logsense:latest --file /data/ingress.log \
+    ; kill $writer
+    ```
+
+  - Two terminals:
+
+    - A: `kubectl logs deploy/ingress-nginx-controller -f -n tks-system > /tmp/ingress.log 2>/dev/null`
+    - B: `docker run --rm -it -v /tmp:/data ghcr.io/conradoqg/logsense:latest --file /data/ingress.log`
+
+  - Tips: truncate first with `: > /tmp/ingress.log`; limit initial read with `--block-size-mb 50`.
+
+- Use a PTY wrapper to keep a TTY across a pipe:
+
+  ```
+  kubectl logs deploy/ingress-nginx-controller -f -n tks-system 2>/dev/null \
+    | script -q -c "docker run --rm -it ghcr.io/conradoqg/logsense:latest --stdin" /dev/null
+  ```
+
+  The `script` command allocates a pseudo‑TTY so the TUI can render while reading stdin.
+
+- Use a named pipe (FIFO):
+
+  ```
+  tmpdir=$(mktemp -d); mkfifo "$tmpdir/pipe"
+  kubectl logs deploy/ingress-nginx-controller -f -n tks-system > "$tmpdir/pipe" 2>/dev/null & kubepid=$!
+  docker run --rm -it -v "$tmpdir:/data" ghcr.io/conradoqg/logsense:latest --file /data/pipe
+  kill "$kubepid" 2>/dev/null; rm -rf "$tmpdir"
+  ```
+
+Notes:
+- Redirect `2>/dev/null` to drop aliases/warnings from `kubectl` that would otherwise mix with logs.
+- On macOS/Windows, ensure the mounted directory (e.g., `/tmp`) is shared with Docker Desktop.
+
+Local piping (no Docker) works normally and preserves the TUI:
 
 ```
-cat testdata/json_lines.ndjson | docker run --rm -i ghcr.io/<owner>/<repo>:latest --stdin
+kubectl logs deploy/ingress-nginx-controller -f -n tks-system | ./logsense --stdin
 ```
 
 Images are multi-arch (linux/amd64, linux/arm64) and built on tags and main branch.
 
 ## Releases
 
-Official binaries for Linux, macOS, and Windows are attached to GitHub Releases when pushing a tag like `v1.0.0`. Docker images are published to GHCR with matching tags and `latest` on the default branch.
+Official binaries for Linux, macOS, and Windows are attached to GitHub Releases: https://github.com/conradoqg/logsense/releases
+
+Docker images are published to GHCR at `ghcr.io/conradoqg/logsense` with matching tags and `latest` on the default branch.
 
 ## Shortcuts
 
