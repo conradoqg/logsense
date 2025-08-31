@@ -7,7 +7,6 @@ type KeyMap struct {
 	Follow       tea.Key
 	Search       tea.Key
 	Export       tea.Key
-	Summarize    tea.Key
 	Explain      tea.Key
 	Redetect     tea.Key
 	Top          tea.Key
@@ -32,12 +31,11 @@ type KeyMap struct {
 }
 
 func DefaultKeyMap() KeyMap {
-	return KeyMap{
+    return KeyMap{
 		Pause:        tea.Key{Type: tea.KeyRunes, Runes: []rune{' '}},
 		Follow:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'t'}},
 		Search:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'/'}},
 		Export:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'e'}},
-		Summarize:    tea.Key{Type: tea.KeyRunes, Runes: []rune{'s'}},
 		Explain:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'i'}},
 		Redetect:     tea.Key{Type: tea.KeyRunes, Runes: []rune{'r'}},
 		Top:          tea.Key{Type: tea.KeyRunes, Runes: []rune{'g'}},

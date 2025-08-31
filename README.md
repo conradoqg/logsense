@@ -1,6 +1,6 @@
 # logsense
 
-Fast, pleasant log TUI built with Bubble Tea, Bubbles and Lipgloss. It reads logs from files (with follow/tail) and/or stdin, detects format, parses into a structured table with filters, search, and inspector. Optional OpenAI integration can help detect schemas, summarize, and explain.
+Fast, pleasant log TUI built with Bubble Tea, Bubbles and Lipgloss. It reads logs from files (with follow/tail) and/or stdin, detects format, parses into a structured table with filters, search, and inspector. Optional OpenAI integration can help re-detect schemas on demand (r) and explain log entries.
 
 ## Installation
 
@@ -61,8 +61,7 @@ logsense
 - `c`: Clear visible buffer
 - `t`: Toggle follow
 - `e`: Export filtered view (uses `--export` and `--out` when provided)
-- `s`: Summarize (OpenAI, coming soon)
-- `i`: Explain (OpenAI, coming soon)
+- `i`: Explain (OpenAI)
 - `r`: Re-detect format
 - `g/G`: Go to top/bottom
 - `?`: Help (popup)
@@ -73,7 +72,7 @@ logsense
 Environment variables:
 
 - `OPENAI_API_KEY`: required to use LLM features
-- `LOGSENSE_OPENAI_MODEL`: default `gpt-4o-mini`
+- `LOGSENSE_OPENAI_MODEL`: default `gpt-5`
 - `LOGSENSE_OPENAI_BASE_URL`: proxy compatibility
 
 The client uses `github.com/sashabaranov/go-openai` with timeouts. Calls are indicated in the UI (spinner + message).
@@ -81,7 +80,7 @@ The client uses `github.com/sashabaranov/go-openai` with timeouts. Calls are ind
 ## Notes
 
 - Large files are read in blocks (last N MB) to avoid excessive memory usage.
-- Format detection uses a fast heuristic on the first ~10 lines. If many parse failures occur consecutively, re-detection is triggered. If inconclusive and OpenAI is configured, it will ask the LLM (with a status bar indicator).
+- Format detection uses a fast heuristic on the first ~10 lines. Use `r` to trigger re-detection; if OpenAI is configured, it will ask the LLM then (with a status bar indicator).
 
 ## Tests and Examples
 
@@ -126,7 +125,7 @@ Log generator behavior:
 ## Roadmap
 
 - Advanced filters (level, time range, govaluate expressions)
-- Summarize/Explain via OpenAI with optional redaction
+- Explain via OpenAI with optional redaction
 - Schema cache per source signature
 - Markdown summary export
 - Polished dark/light themes

@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "logsense: haproxy no-cache",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/logsense",
+            "console": "integratedTerminal",
+            "env": {
+                "LOGSENSE_LOG_LEVEL": "debug"
+            },
+            "args": [
+                "--file",
+                "${workspaceFolder}/simulateddata/haproxy_http.log",
+                "--no-cache"
+            ]
+        }
+    ]
+}

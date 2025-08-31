@@ -20,14 +20,14 @@ const (
 )
 
 type Options struct {
-    Source         SourceKind
-    Path           string
-    Follow         bool
-    ScanBufSize    int   // per-line max (bytes)
-    BlockSizeBytes int64 // only for non-follow file read; 0 = all
-    // StartOffset: when following a file, if >= 0, start reading from this
-    // absolute byte offset (from start). If < 0, start at file end.
-    StartOffset    int64
+	Source         SourceKind
+	Path           string
+	Follow         bool
+	ScanBufSize    int   // per-line max (bytes)
+	BlockSizeBytes int64 // only for non-follow file read; 0 = all
+	// StartOffset: when following a file, if >= 0, start reading from this
+	// absolute byte offset (from start). If < 0, start at file end.
+	StartOffset int64
 }
 
 type Line struct {
@@ -48,11 +48,11 @@ func Read(ctx context.Context, opt Options) (<-chan Line, <-chan error) {
 		case SourceStdin:
 			readFromReader(ctx, os.Stdin, "stdin", opt.ScanBufSize, out, errs)
 		case SourceFile:
-            if opt.Follow {
-                readFromTail(ctx, opt.Path, opt.StartOffset, out, errs)
-            } else if opt.BlockSizeBytes > 0 {
-                readFromFileBlock(ctx, opt.Path, opt.BlockSizeBytes, opt.ScanBufSize, out, errs)
-            } else {
+			if opt.Follow {
+				readFromTail(ctx, opt.Path, opt.StartOffset, out, errs)
+			} else if opt.BlockSizeBytes > 0 {
+				readFromFileBlock(ctx, opt.Path, opt.BlockSizeBytes, opt.ScanBufSize, out, errs)
+			} else {
 				f, err := os.Open(opt.Path)
 				if err != nil {
 					errs <- err
@@ -89,20 +89,20 @@ func readFromReader(ctx context.Context, r io.Reader, src string, maxBuf int, ou
 }
 
 func readFromTail(ctx context.Context, path string, startOffset int64, out chan<- Line, errs chan<- error) {
-    var loc *tail.SeekInfo
-    if startOffset >= 0 {
-        loc = &tail.SeekInfo{Offset: startOffset, Whence: io.SeekStart}
-    } else {
-        loc = &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
-    }
-    t, err := tail.TailFile(path, tail.Config{
-        Follow:    true,
-        ReOpen:    true,
-        MustExist: true,
-        Logger:    tail.DiscardingLogger,
-        Poll:      true,
-        Location:  loc,
-    })
+	var loc *tail.SeekInfo
+	if startOffset >= 0 {
+		loc = &tail.SeekInfo{Offset: startOffset, Whence: io.SeekStart}
+	} else {
+		loc = &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
+	}
+	t, err := tail.TailFile(path, tail.Config{
+		Follow:    true,
+		ReOpen:    true,
+		MustExist: true,
+		Logger:    tail.DiscardingLogger,
+		Poll:      true,
+		Location:  loc,
+	})
 	if err != nil {
 		errs <- err
 		return

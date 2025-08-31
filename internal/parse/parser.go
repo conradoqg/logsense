@@ -107,72 +107,74 @@ type RegexParser struct {
 }
 
 func NewRegexParser(s model.Schema, forced string) (Parser, error) {
-	re, err := regexp.Compile(s.RegexPattern)
+	pat := sanitizeRegexPattern(s.RegexPattern)
+	re, err := regexp.Compile(pat)
 	if err != nil {
+		// Leave regex nil so parser falls back to raw msg; caller may log.
 		return &RegexParser{schema: s, layout: fallbackLayout(s.TimeLayout, forced)}, nil
 	}
 	return &RegexParser{schema: s, layout: fallbackLayout(s.TimeLayout, forced), re: re}, nil
 }
 
 func (p *RegexParser) Parse(line, source string) model.LogEntry {
-    e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
-    if p.re == nil {
-        e.Fields["msg"] = line
-        return e
-    }
-    m := p.re.FindStringSubmatch(line)
-    if m == nil {
-        e.Fields["msg"] = line
-        return e
-    }
-    names := p.re.SubexpNames()
-    captured := 0
-    for i, name := range names {
-        if i == 0 || name == "" {
-            continue
-        }
-        val := m[i]
-        e.Fields[name] = val
-        captured++
-        if name == "ts" || name == "time" || name == "timestamp" {
-            if t, err := time.Parse(p.layout, val); err == nil {
-                e.Timestamp = &t
-            }
-        }
-        if name == "level" || name == "lvl" || name == "severity" {
-            e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
-        }
-        if name == "status" {
-            if n, err := strconv.Atoi(val); err == nil {
-                e.Fields[name] = n
-            }
-        }
-    }
-    // Fallback: if regex has no named groups, map captures to schema field order
-    if captured == 0 {
-        fields := p.schema.Fields
-        if len(fields) == len(m)-1 { // ignore whole-match at index 0
-            for i := 1; i < len(m); i++ {
-                name := fields[i-1].Name
-                val := m[i]
-                e.Fields[name] = val
-                if name == "ts" || name == "time" || name == "timestamp" {
-                    if t, err := time.Parse(p.layout, val); err == nil {
-                        e.Timestamp = &t
-                    }
-                }
-                if name == "level" || name == "lvl" || name == "severity" {
-                    e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
-                }
-                if name == "status" {
-                    if n, err := strconv.Atoi(val); err == nil {
-                        e.Fields[name] = n
-                    }
-                }
-            }
-        }
-    }
-    return e
+	e := model.LogEntry{Raw: line, Fields: map[string]any{}, Source: source, FormatName: p.schema.FormatName}
+	if p.re == nil {
+		e.Fields["msg"] = line
+		return e
+	}
+	m := p.re.FindStringSubmatch(line)
+	if m == nil {
+		e.Fields["msg"] = line
+		return e
+	}
+	names := p.re.SubexpNames()
+	captured := 0
+	for i, name := range names {
+		if i == 0 || name == "" {
+			continue
+		}
+		val := m[i]
+		e.Fields[name] = val
+		captured++
+		if name == "ts" || name == "time" || name == "timestamp" {
+			if t, err := time.Parse(p.layout, val); err == nil {
+				e.Timestamp = &t
+			}
+		}
+		if name == "level" || name == "lvl" || name == "severity" {
+			e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
+		}
+		if name == "status" {
+			if n, err := strconv.Atoi(val); err == nil {
+				e.Fields[name] = n
+			}
+		}
+	}
+	// Fallback: if regex has no named groups, map captures to schema field order
+	if captured == 0 {
+		fields := p.schema.Fields
+		if len(fields) == len(m)-1 { // ignore whole-match at index 0
+			for i := 1; i < len(m); i++ {
+				name := fields[i-1].Name
+				val := m[i]
+				e.Fields[name] = val
+				if name == "ts" || name == "time" || name == "timestamp" {
+					if t, err := time.Parse(p.layout, val); err == nil {
+						e.Timestamp = &t
+					}
+				}
+				if name == "level" || name == "lvl" || name == "severity" {
+					e.Level = normalizeLevel(p.schema, strings.ToUpper(val))
+				}
+				if name == "status" {
+					if n, err := strconv.Atoi(val); err == nil {
+						e.Fields[name] = n
+					}
+				}
+			}
+		}
+	}
+	return e
 }
 
 // logfmt parser (very basic, supports quoted values)
@@ -273,4 +275,45 @@ func normalizeLevel(s model.Schema, lvl string) string {
 		return "FATAL"
 	}
 	return l
+}
+
+// sanitizeRegexPattern normalizes common named-group syntaxes and wrappers
+// that LLMs or external sources might return, into a Go-compatible pattern.
+func sanitizeRegexPattern(p string) string {
+	t := strings.TrimSpace(p)
+	if t == "" {
+		return t
+	}
+	// Strip code fences/backticks
+	t = strings.ReplaceAll(t, "`", "")
+	t = strings.TrimSpace(t)
+	// Strip leading/trailing slashes like /pattern/flags
+	if strings.HasPrefix(t, "/") {
+		if idx := strings.LastIndex(t, "/"); idx > 0 {
+			body := t[1:idx]
+			t = body
+		}
+	}
+	// Convert Python-style named groups (?<name>...) to Go's (?P<name>...)
+	// Note: Go already supports (?P<name>...), so leave those intact.
+	// Replace occurrences of "(?<name>" when not already (?P<
+	// Simple textual replace; safe for typical patterns.
+	t = replacePythonNamedGroup(t)
+	return t
+}
+
+func replacePythonNamedGroup(s string) string {
+	// Replace all instances of (?<name> with (?P<name>
+	// Use a small state machine to avoid importing another regexp just for this.
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '(' && i+2 < len(s) && s[i+1] == '?' && s[i+2] == '<' {
+			b.WriteString("(?P<")
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
