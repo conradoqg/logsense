@@ -33,11 +33,11 @@ func (m *Model) renderStream() string {
 	// Table view (header already includes selection markers)
 	tv := m.tbl.View()
 	// Build minimal hint/status trail
-	hint := "  [?]=help"
+	hint := "| [?]=help |"
 	if m.inlineMode == inlineFilter {
-		hint += "  [enter]=apply [esc]=cancel"
+		hint += "| [enter]=apply [esc]=cancel |"
 	} else if m.inlineMode == inlineBuffer {
-		hint += "  [enter]=apply [esc]=cancel"
+		hint += "| [enter]=apply [esc]=cancel |"
 	}
 	// Current cursor position among filtered rows
 	cur := m.tbl.Cursor()
@@ -53,11 +53,11 @@ func (m *Model) renderStream() string {
 		}
 		curDisp = cur + 1
 	}
-	// Show rows (visible) and ingested counters to avoid confusion
-	status := fmt.Sprintf("[%s] line:%d/%d rows:%d ingested:%d overflow:%d invalid:%d format:%s follow:%v source:%s%s  %s%s",
+	// Compact status: only running state, follow state, current line/total
+	status := fmt.Sprintf("[%s] line:%d/%d follow:%v%s  %s%s",
 		map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
 		curDisp, total,
-		len(m.filtered), m.total, m.dropped, m.invalidCount, m.schema.FormatName, m.follow, m.source, hint, m.lastMsg, busy)
+		m.follow, hint, m.lastMsg, busy)
 	// Inline input line above status bar (or active filter summary)
 	var bottom string
 	if m.inlineMode == inlineSearch {
@@ -147,7 +147,14 @@ func (m *Model) renderHelp() string {
 	if m.helpSel >= len(m.helpItems) {
 		m.helpSel = len(m.helpItems) - 1
 	}
-	lines := []string{"Shortcuts:"}
+	// Status details (moved from main status bar)
+	lines := []string{"Status:",
+		fmt.Sprintf("format: %s (%s)", m.schema.FormatName, m.schema.ParseStrategy),
+		fmt.Sprintf("rows: %d  ingested: %d  overflow: %d  invalid: %d", len(m.filtered), m.total, m.dropped, m.invalidCount),
+		fmt.Sprintf("source: %s  follow: %v", m.source, m.follow),
+		"",
+		"Shortcuts:",
+	}
 	currentGroup := ""
 	lineIndexOfSel := 0
 	for i, it := range m.helpItems {
@@ -265,13 +272,14 @@ func (m *Model) renderModal() string {
 	case modalHelp:
 		// Update content dynamically for help menu
 		m.modalVP.SetContent(m.renderHelp())
+		// Place localized controls on a dedicated hint line inside modal
 		content = m.modalVP.View() + "\n[esc]=close  [enter]=run"
 	case modalSearch:
 		content = m.search.View() + "\n[enter]=apply  [esc]=close  [n/N]=next/prev"
 	case modalFilter:
 		content = m.search.View() + "\n[enter]=apply  [esc]=close"
-    case modalInspector, modalStats, modalRaw, modalLogs, modalExplain:
-        content = m.modalVP.View() + "\n[esc/enter]=close  [C]=copy"
+	case modalInspector, modalStats, modalRaw, modalLogs, modalExplain:
+		content = m.modalVP.View() + "\n[esc/enter]=close  [c]=copy"
 	default:
 		content = m.modalVP.View() + "\n[esc/enter]=close"
 	}

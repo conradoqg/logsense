@@ -58,7 +58,7 @@ logsense
 - `/`: Search (plain text or regex between slashes, e.g. `/error|warn/`)
 - `f`: Filters tab (WIP)
 - `Enter`: Inspector
-- `c`: Clear visible buffer
+- `c`: Copy current line
 - `t`: Toggle follow
 - `e`: Export filtered view (uses `--export` and `--out` when provided)
 - `i`: Explain (OpenAI)

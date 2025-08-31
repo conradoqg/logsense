@@ -87,9 +87,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		if m.modalActive {
-			// Modal key handling
-			if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
+            if m.modalActive {
+                // Modal key handling
+                if msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
 				// If applying in search/filter
 				if msg.Type == tea.KeyEnter {
 					if m.modalKind == modalSearch {
@@ -145,27 +145,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if msg.Type == tea.KeyRunes && (msg.String() == "C" || msg.String() == "c") && (m.modalKind == modalInspector || m.modalKind == modalStats) {
-				copyToClipboard(m.modalBody)
-				m.lastMsg = "copied to clipboard"
-				return m, nil
-			}
-			// Help modal navigation and actions
-			if m.modalKind == modalHelp {
-				if msg.Type == tea.KeyUp {
-					if m.helpSel > 0 {
-						m.helpSel--
-						m.modalVP.SetContent(m.renderHelp())
-					}
-					return m, nil
-				}
-				if msg.Type == tea.KeyDown {
-					if m.helpSel+1 < len(m.helpItems) {
-						m.helpSel++
-						m.modalVP.SetContent(m.renderHelp())
-					}
-					return m, nil
-				}
+                if msg.Type == tea.KeyRunes && msg.String() == "c" && (m.modalKind == modalInspector || m.modalKind == modalStats || m.modalKind == modalRaw || m.modalKind == modalLogs || m.modalKind == modalExplain) {
+                    copyToClipboard(m.modalBody)
+                    m.lastMsg = "copied to clipboard"
+                    return m, nil
+                }
+                // Help modal navigation and actions
+                if m.modalKind == modalHelp {
+                    if msg.Type == tea.KeyUp {
+                        if m.helpSel > 0 {
+                            m.helpSel--
+                            m.modalVP.SetContent(m.renderHelp())
+                        }
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyDown {
+                        if m.helpSel+1 < len(m.helpItems) {
+                            m.helpSel++
+                            m.modalVP.SetContent(m.renderHelp())
+                        }
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyPgUp {
+                        page := m.modalVP.Height - 1
+                        if page < 1 {
+                            page = 1
+                        }
+                        m.helpSel -= page
+                        if m.helpSel < 0 {
+                            m.helpSel = 0
+                        }
+                        m.modalVP.SetContent(m.renderHelp())
+                        return m, nil
+                    }
+                    if msg.Type == tea.KeyPgDown {
+                        page := m.modalVP.Height - 1
+                        if page < 1 {
+                            page = 1
+                        }
+                        m.helpSel += page
+                        if m.helpSel >= len(m.helpItems) {
+                            m.helpSel = len(m.helpItems) - 1
+                        }
+                        m.modalVP.SetContent(m.renderHelp())
+                        return m, nil
+                    }
 				if msg.Type == tea.KeyEnter {
 					if len(m.helpItems) > 0 {
 						it := m.helpItems[m.helpSel]

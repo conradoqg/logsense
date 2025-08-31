@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,8 @@ func overlay(base, overlay string) string {
 
 // copyToClipboard tries to copy text using OSC52 (works in many terminals).
 func copyToClipboard(s string) {
+	// Remove ANSI color codes before copying
+	s = stripANSI(s)
 	enc := base64.StdEncoding.EncodeToString([]byte(s))
 	payload := fmt.Sprintf("\x1b]52;c;%s\x07", enc)
 	// Best-effort: write to /dev/tty to avoid clobbering the app's stdout buffer
@@ -50,6 +53,12 @@ func copyToClipboard(s string) {
 	}
 	// Fallback to stdout
 	fmt.Fprint(os.Stdout, payload)
+}
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
+func stripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
 }
 
 func parsedOK(e model.LogEntry) bool {

@@ -50,7 +50,7 @@ func DefaultKeyMap() KeyMap {
 		Filter:       tea.Key{Type: tea.KeyRunes, Runes: []rune{'f'}},
 		SearchNext:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'n'}},
 		SearchPrev:   tea.Key{Type: tea.KeyRunes, Runes: []rune{'N'}},
-		CopyLine:     tea.Key{Type: tea.KeyRunes, Runes: []rune{'y'}},
+		CopyLine:     tea.Key{Type: tea.KeyRunes, Runes: []rune{'c'}},
 		ClearFilter:  tea.Key{Type: tea.KeyRunes, Runes: []rune{'F'}},
 		ViewRaw:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'v'}},
 		AppLogs:      tea.Key{Type: tea.KeyRunes, Runes: []rune{'L'}},
