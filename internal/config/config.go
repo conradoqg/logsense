@@ -16,10 +16,11 @@ const (
 )
 
 type Config struct {
-	FilePath         string
-	UseStdin         bool
-	Follow           bool
-	MaxBuffer        int
+    FilePath         string
+    UseStdin         bool
+    Follow           bool
+    NoFollow         bool
+    MaxBuffer        int
 	BlockSizeMB      int
 	Theme            Theme
 	Offline          bool
@@ -37,7 +38,7 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	cfg := &Config{}
+    cfg := &Config{Follow: true}
 
 	// Detect if stdin is piped
 	fi, _ := os.Stdin.Stat()
@@ -46,8 +47,9 @@ func Load() (*Config, error) {
 	fs := flag.NewFlagSet("logsense", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-	fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
-	fs.BoolVar(&cfg.Follow, "follow", false, "follow file (tail -f)")
+    fs.StringVar(&cfg.FilePath, "file", "", "path to log file")
+    fs.BoolVar(&cfg.Follow, "follow", true, "follow file (tail -f)")
+    fs.BoolVar(&cfg.NoFollow, "no-follow", false, "do not follow (tail -f off)")
 	fs.BoolVar(&cfg.UseStdin, "stdin", false, "read from stdin (default: auto if piped)")
 	fs.IntVar(&cfg.MaxBuffer, "max-buffer", 200000, "ring buffer size (min 50000)")
 	fs.IntVar(&cfg.BlockSizeMB, "block-size-mb", 0, "when reading a file (no follow), read only the last N MB instead of the whole file (0=all)")
@@ -63,10 +65,14 @@ func Load() (*Config, error) {
 	fs.StringVar(&cfg.ExportFormat, "export", "", "export filtered view: csv|json")
 	fs.StringVar(&cfg.ExportOut, "out", "", "output path for export")
 
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		return nil, err
-	}
-	cfg.Theme = Theme(theme)
+    if err := fs.Parse(os.Args[1:]); err != nil {
+        return nil, err
+    }
+    cfg.Theme = Theme(theme)
+
+    if cfg.NoFollow {
+        cfg.Follow = false
+    }
 
 	if cfg.ExportFormat != "" && cfg.ExportOut == "" {
 		return nil, errors.New("--export requires --out path")
