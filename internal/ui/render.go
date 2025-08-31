@@ -26,18 +26,14 @@ func (m *Model) View() string {
 }
 
 func (m *Model) renderStream() string {
-	busy := ""
-	if m.netBusy {
-		busy = " " + m.spin.View()
-	}
 	// Table view (header already includes selection markers)
 	tv := m.tbl.View()
 	// Build minimal hint/status trail
-	hint := "| [?]=help |"
+	hint := "[?]=help"
 	if m.inlineMode == inlineFilter {
-		hint += "| [enter]=apply [esc]=cancel |"
+		hint += "[enter]=apply [esc]=cancel"
 	} else if m.inlineMode == inlineBuffer {
-		hint += "| [enter]=apply [esc]=cancel |"
+		hint += "[enter]=apply [esc]=cancel"
 	}
 	// Current cursor position among filtered rows
 	cur := m.tbl.Cursor()
@@ -53,11 +49,11 @@ func (m *Model) renderStream() string {
 		}
 		curDisp = cur + 1
 	}
-	// Compact status: only running state, follow state, current line/total
-	status := fmt.Sprintf("[%s] line:%d/%d follow:%v%s  %s%s",
-		map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
-		curDisp, total,
-		m.follow, hint, m.lastMsg, busy)
+    // Compact status: only running state, follow state, current line/total
+    status := fmt.Sprintf("[%s] | line:%d/%d follow:%v | %s | %s",
+        map[state]string{stateRunning: "Running", statePaused: "Paused"}[m.state],
+        curDisp, total,
+        m.follow, hint, m.lastMsg)
 	// Inline input line above status bar (or active filter summary)
 	var bottom string
 	if m.inlineMode == inlineSearch {

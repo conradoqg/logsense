@@ -48,16 +48,13 @@ func (m *Model) buildHelpItems() []helpItem {
 		{group: "Views", text: "Inspector", key: m.keymap.InspectorTab},
 		{group: "Views", text: "View raw log", key: m.keymap.ViewRaw},
 		{group: "Views", text: "Application logs", key: m.keymap.AppLogs},
-		{group: "Views", text: "Stats for column", key: m.keymap.Stats},
-		{group: "Views", text: "Stats (selected column)", key: m.keymap.NextStats},
-		{group: "Views", text: "Stream tab", key: m.keymap.StreamTab},
-		{group: "Views", text: "Filters tab", key: m.keymap.FilterTab},
+        {group: "Views", text: "Stats for column", key: m.keymap.Stats},
 
 		{group: "Control", text: "Pause/Resume", key: km.Pause},
 		{group: "Control", text: "Toggle follow", key: km.Follow},
 		{group: "Control", text: "Change buffer size", key: km.Buffer},
 		{group: "Control", text: "Export", key: km.Export},
-		{group: "Control", text: "Re-detect format", key: km.Redetect},
+        {group: "Control", text: "Detect format", key: km.Redetect},
 		{group: "Control", text: "Help", key: km.Help},
 		{group: "Control", text: "Quit", key: km.Quit},
 
@@ -392,12 +389,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case keyMatches(msg, m.keymap.Help):
 			m.openHelpModal()
 			return m, nil
-		case keyMatches(msg, m.keymap.StreamTab):
-			m.tab = tabStream
-			return m, nil
-		case keyMatches(msg, m.keymap.FilterTab):
-			m.tab = tabFilters
-			return m, nil
+    // Removed StreamTab and FilterTab shortcuts
 		case keyMatches(msg, m.keymap.InspectorTab):
 			m.openInspectorModal()
 			return m, nil
@@ -416,17 +408,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case keyMatches(msg, m.keymap.AppLogs):
 			m.openAppLogsModal()
-			return m, nil
-		case keyMatches(msg, m.keymap.NextStats):
-			// Set stats to selected column (no cycling)
-			all := m.deriveColumns()
-			if len(all) > 0 {
-				if m.selColIdx >= len(all) {
-					m.selColIdx = len(all) - 1
-				}
-				m.statsField = all[m.selColIdx]
-				m.openStatsModal()
-			}
 			return m, nil
 		case msg.Type == tea.KeyLeft:
 			all := m.deriveColumns()

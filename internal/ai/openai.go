@@ -79,22 +79,17 @@ func (c *OpenAIClient) callAlt(ctx context.Context, prompt string) (string, erro
 		cfg.BaseURL = c.baseURL
 	}
 	cli := altai.NewClientWithConfig(cfg)
-    // Build request and adjust options for model quirks (e.g., gpt-5)
-    req := altai.ChatCompletionRequest{
-        Model: c.model,
-        Messages: []altai.ChatCompletionMessage{
-            {Role: altai.ChatMessageRoleSystem, Content: "You detect log formats and return ONLY strict JSON following the specified contract. No prose, no code fences."},
-            {Role: altai.ChatMessageRoleUser, Content: prompt},
-        },
-        ResponseFormat: &altai.ChatCompletionResponseFormat{Type: altai.ChatCompletionResponseFormatTypeJSONObject},
-    }
-    if strings.HasPrefix(strings.ToLower(c.model), "gpt-5") {
-        // Some models only support default temperature (1)
-        req.Temperature = 1
-    } else {
-        req.Temperature = 0.2
-    }
-    resp, err := cli.CreateChatCompletion(ctx, req)
+	// Build request and adjust options for model quirks (e.g., gpt-5)
+	req := altai.ChatCompletionRequest{
+		Model: c.model,
+		Messages: []altai.ChatCompletionMessage{
+			{Role: altai.ChatMessageRoleSystem, Content: "You detect log formats and return ONLY strict JSON following the specified contract. No prose, no code fences."},
+			{Role: altai.ChatMessageRoleUser, Content: prompt},
+		},
+		ResponseFormat: &altai.ChatCompletionResponseFormat{Type: altai.ChatCompletionResponseFormatTypeJSONObject},
+	}
+	req.Temperature = 1
+	resp, err := cli.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -106,48 +101,44 @@ func (c *OpenAIClient) callAlt(ctx context.Context, prompt string) (string, erro
 
 // ExplainLog asks the model to explain a single log entry and suggest fixes if it's an error.
 func (c *OpenAIClient) ExplainLog(ctx context.Context, raw string, fields map[string]any) (string, error) {
-    if c == nil || c.apiKey == "" {
-        return "", errors.New("openai disabled")
-    }
-    cfg := altai.DefaultConfig(c.apiKey)
-    if c.baseURL != "" {
-        cfg.BaseURL = c.baseURL
-    }
-    cli := altai.NewClientWithConfig(cfg)
-    // Build a concise prompt including raw and parsed fields
-    var b strings.Builder
-    b.WriteString("Raw log:\n")
-    b.WriteString(raw)
-    b.WriteString("\n\nParsed fields (JSON):\n")
-    if fields != nil {
-        if js, err := json.MarshalIndent(fields, "", "  "); err == nil {
-            b.Write(js)
-        }
-    }
-    user := b.String()
-    sys := "You are a helpful logs assistant. Explain what this single log entry means, likely root cause, impact, and if it is an error, specific steps to fix it. Keep it concise and actionable."
-    req := altai.ChatCompletionRequest{
-        Model: c.model,
-        Messages: []altai.ChatCompletionMessage{
-            {Role: altai.ChatMessageRoleSystem, Content: sys},
-            {Role: altai.ChatMessageRoleUser, Content: user},
-        },
-    }
-    if strings.HasPrefix(strings.ToLower(c.model), "gpt-5") {
-        req.Temperature = 1
-    } else {
-        req.Temperature = 0.2
-    }
-    ctx2, cancel := context.WithTimeout(ctx, c.timeout)
-    defer cancel()
-    resp, err := cli.CreateChatCompletion(ctx2, req)
-    if err != nil {
-        return "", err
-    }
-    if len(resp.Choices) == 0 {
-        return "", errors.New("empty choices")
-    }
-    return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	if c == nil || c.apiKey == "" {
+		return "", errors.New("openai disabled")
+	}
+	cfg := altai.DefaultConfig(c.apiKey)
+	if c.baseURL != "" {
+		cfg.BaseURL = c.baseURL
+	}
+	cli := altai.NewClientWithConfig(cfg)
+	// Build a concise prompt including raw and parsed fields
+	var b strings.Builder
+	b.WriteString("Raw log:\n")
+	b.WriteString(raw)
+	b.WriteString("\n\nParsed fields (JSON):\n")
+	if fields != nil {
+		if js, err := json.MarshalIndent(fields, "", "  "); err == nil {
+			b.Write(js)
+		}
+	}
+	user := b.String()
+	sys := "You are a helpful logs assistant. Explain what this single log entry means, likely root cause, impact, and if it is an error, specific steps to fix it. Keep it concise and actionable."
+	req := altai.ChatCompletionRequest{
+		Model: c.model,
+		Messages: []altai.ChatCompletionMessage{
+			{Role: altai.ChatMessageRoleSystem, Content: sys},
+			{Role: altai.ChatMessageRoleUser, Content: user},
+		},
+	}
+	req.Temperature = 1
+	ctx2, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	resp, err := cli.CreateChatCompletion(ctx2, req)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", errors.New("empty choices")
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
 func buildSchemaPrompt(lines []string) string {

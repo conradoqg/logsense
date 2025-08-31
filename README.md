@@ -62,7 +62,7 @@ logsense
 - `t`: Toggle follow
 - `e`: Export filtered view (uses `--export` and `--out` when provided)
 - `i`: Explain (OpenAI)
-- `r`: Re-detect format
+- `d`: Detect format
 - `g/G`: Go to top/bottom
 - `?`: Help (popup)
 - `x`: Stats for selected column (min/avg/max, distribution or distinct values)
@@ -72,7 +72,7 @@ logsense
 Environment variables:
 
 - `OPENAI_API_KEY`: required to use LLM features
-- `LOGSENSE_OPENAI_MODEL`: default `gpt-5`
+- `LOGSENSE_OPENAI_MODEL`: default `gpt-5-mini`
 - `LOGSENSE_OPENAI_BASE_URL`: proxy compatibility
 
 The client uses `github.com/sashabaranov/go-openai` with timeouts. Calls are indicated in the UI (spinner + message).
