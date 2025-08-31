@@ -13,7 +13,8 @@ go run ./cmd/logsense --help
 Build locally:
 
 ```
-go build -o logsense ./cmd/logsense
+make build
+./logsense --version
 ```
 
 ## Basic Usage
@@ -51,6 +52,37 @@ logsense
 - `--time-layout=...`: force time layout
 - `--format=json|regex|logfmt|apache|syslog`: force format
 - `--export=csv|json --out=PATH`: export filtered view
+- `--version`: print version and exit
+
+## Docker
+
+Pull the image from GHCR (repository URL to be provided):
+
+```
+docker pull ghcr.io/<owner>/<repo>:latest
+```
+
+Run with a file mounted:
+
+```
+docker run --rm -it \
+  -v /var/log:/var/log:ro \
+  --env OPENAI_API_KEY \
+  ghcr.io/<owner>/<repo>:latest \
+  --file /var/log/syslog --follow
+```
+
+Pipe stdin:
+
+```
+cat testdata/json_lines.ndjson | docker run --rm -i ghcr.io/<owner>/<repo>:latest --stdin
+```
+
+Images are multi-arch (linux/amd64, linux/arm64) and built on tags and main branch.
+
+## Releases
+
+Official binaries for Linux, macOS, and Windows are attached to GitHub Releases when pushing a tag like `v1.0.0`. Docker images are published to GHCR with matching tags and `latest` on the default branch.
 
 ## Shortcuts
 

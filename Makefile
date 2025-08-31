@@ -2,11 +2,17 @@
 
 # Ensure Go build cache stays within the workspace sandbox
 GOCACHE ?= $(shell pwd)/.gocache
+
+# Versioning
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE    ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+LDFLAGS ?= -X logsense/internal/version.Version=$(VERSION) -X logsense/internal/version.Commit=$(COMMIT) -X logsense/internal/version.Date=$(DATE)
 RATE ?= 5
 FORMAT ?= text,json_lines
 
 build:
-	GOCACHE=$(GOCACHE) go build -o logsense ./cmd/logsense
+	GOCACHE=$(GOCACHE) go build -ldflags "$(LDFLAGS)" -o logsense ./cmd/logsense
 
 run:
 	GOCACHE=$(GOCACHE) go run ./cmd/logsense

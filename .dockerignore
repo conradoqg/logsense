@@ -1,0 +1,12 @@
+.git
+.gocache
+simulateddata
+logsense
+loggen
+**/*.test
+**/*.log
+**/*.tmp
+**/*.swp
+node_modules
+dist
+.DS_Store

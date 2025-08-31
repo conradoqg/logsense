@@ -35,6 +35,9 @@ type Config struct {
 
 	// Internal
 	IsPipedStdin bool
+
+    // Meta
+    ShowVersion bool
 }
 
 func Load() (*Config, error) {
@@ -65,9 +68,13 @@ func Load() (*Config, error) {
 	fs.StringVar(&cfg.ExportFormat, "export", "", "export filtered view: csv|json")
 	fs.StringVar(&cfg.ExportOut, "out", "", "output path for export")
 
+    showVersion := false
+    fs.BoolVar(&showVersion, "version", false, "print version and exit")
+
     if err := fs.Parse(os.Args[1:]); err != nil {
         return nil, err
     }
+    cfg.ShowVersion = showVersion
     cfg.Theme = Theme(theme)
 
     if cfg.NoFollow {
